@@ -64,6 +64,8 @@ export function EntryForm({
   const [looking, setLooking] = useState(false);
   const [found, setFound] = useState<Extract<LookupResult, { ok: true }> | null>(null);
   const [lookupError, setLookupError] = useState('');
+  /** 調べる前に打った言葉（「元に戻す」用） */
+  const [typed, setTyped] = useState<string | null>(null);
 
   async function lookup() {
     if (!onLookup || !label.trim()) return;
@@ -89,6 +91,14 @@ export function EntryForm({
       }
       setVals(next);
       setFound(r);
+      // 名前を整えた名前に置き換える（打った言葉は「元に戻す」で戻せる）
+      const tidy = r.draft.name.trim();
+      if (tidy && tidy !== label.trim()) {
+        setTyped(label);
+        setLabel(tidy);
+      } else {
+        setTyped(null);
+      }
     } finally {
       setLooking(false);
     }
@@ -143,6 +153,21 @@ export function EntryForm({
               {found.draft.name || label}
               {found.draft.serving && `（${found.draft.serving}）`}の値を入れました
             </strong>
+            {typed != null && (
+              <span className="hint">
+                名前を「{found.draft.name}」に整えました（直せます）。
+                <button
+                  type="button"
+                  className="inline-link"
+                  onClick={() => {
+                    setLabel(typed);
+                    setTyped(null);
+                  }}
+                >
+                  元に戻す
+                </button>
+              </span>
+            )}
             {found.draft.confidence !== 'high' && <span className="hint strong">確かな値ではありません。確かめてから記録してください。</span>}
             {found.searched ? (
               found.sources.length > 0 ? (
