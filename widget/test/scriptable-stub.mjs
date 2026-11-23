@@ -40,6 +40,7 @@ const sample = (over) => ({
     { key: 'f', name: '脂質', unit: 'g', kind: 'cap', goal: 50, remaining: 18, state: 'ok' },
     { key: 'c', name: '炭水化物', unit: 'g', kind: 'cap', goal: 278, remaining: 120, state: 'ok' },
     { key: 'money', name: '使えるお金', unit: '円', kind: 'cap', goal: 1000, remaining: over ? -180 : 420, state: over ? 'over' : 'ok' },
+    { key: null, name: 'スクリーンタイム', unit: '分', kind: 'cap', goal: 120, remaining: over ? -45 : 75, state: over ? 'over' : 'ok' },
   ],
 });
 
@@ -53,7 +54,7 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 for (const over of [false, true]) {
   body.current = sample(over);
   for (const family of ['accessoryCircular', 'accessoryRectangular', 'accessoryInline', 'small', 'medium']) {
-    for (const param of family === 'accessoryCircular' ? ['kcal', 'p', 'money'] : [null]) {
+    for (const param of family === 'accessoryCircular' ? ['kcal', 'p', 'money', 'スクリーンタイム'] : [null]) {
       store.set('zanryo.url', 'https://example/zanryo-widget-summary');
       store.set('zanryo.token', 'zr_x');
       const fn = new AsyncFunction(

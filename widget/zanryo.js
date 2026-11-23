@@ -14,6 +14,7 @@
  *    どちらもKeychainに保存し、スクリプトには書かない。
  * 3. ロック画面／ホーム画面にScriptableのウィジェットを置き、Scriptに「zanryo」を選ぶ。
  *    円形ウィジェットは Parameter に表示する項目を書く: kcal / p / f / c / money（省略時 kcal）
+ *    自分で追加したターゲットは名前を書く（例: スクリーンタイム）
  */
 
 const KC_URL = 'zanryo.url';
@@ -125,8 +126,9 @@ function statusText(item) {
 const SHORT_NAME = { kcal: 'kcal', p: 'P', f: 'F', c: 'C', money: 'お金' };
 const LONG_NAME = { kcal: 'カロリー', p: 'タンパク質', f: '脂質', c: '炭水化物', money: '使えるお金' };
 
+/** 項目を探す。kcal / p / f / c / money のほか、自分で追加したターゲットは名前で（例：スクリーンタイム） */
 function find(data, key) {
-  return (data.items || []).find((i) => i.key === key);
+  return (data.items || []).find((i) => i.key === key || i.name === key);
 }
 
 function timeLabel(date) {
@@ -163,6 +165,8 @@ function circularLines(item) {
   }
   if (isMoney(item)) return [stateWord(item), `¥${num(item.remaining)}`];
   if (item.key === 'kcal') return [item.state === 'over' ? 'kcal超過' : 'kcal', num(item.remaining)];
+  // 自分で追加したターゲット（名前が長いことが多いので、見出しは状態だけ）
+  if (!item.key) return [stateWord(item), `${num(item.remaining)}${item.unit || ''}`];
   return [`${name} ${stateWord(item)}`, `${num(item.remaining)}${item.unit || ''}`];
 }
 
