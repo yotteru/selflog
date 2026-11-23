@@ -39,12 +39,21 @@ describe('buildPeriod', () => {
     expect(r.days.map((d) => d.status)).toEqual(['ok', 'ng', 'missing', 'ok', 'today', 'future', 'future']);
     expect(r.counts).toEqual({ ok: 2, ng: 1, missing: 1 });
   });
-  it('合計と、記録した日の分の目標（今日も記録があれば入る）', () => {
+  it('目標は記録の有無にかかわらず7日分。平均は過ぎた日数（今日を含む5日）で割る', () => {
     expect(r.total).toBe(7500);
-    expect(r.goal).toBe(2200 * 4);
-    expect(r.goalBasis).toBe('recorded-days');
-    expect(r.recordedDays).toBe(4);
-    expect(r.average).toBe(7500 / 4);
+    expect(r.goal).toBe(2200 * 7);
+    expect(r.goalBasis).toBe('all-days');
+    expect(r).toMatchObject({ dayCount: 7, elapsedDays: 5, recordedDays: 4 });
+    expect(r.average).toBe(7500 / 5);
+  });
+  it('折れ線：その日までの積み上げ（未来は null）と、期間の終わりにちょうど目標になるペース', () => {
+    expect(r.cumulative).toEqual([2000, 4500, 4500, 6700, 7500, null, null]);
+    expect(r.pace[0]).toBeCloseTo(2200);
+    expect(r.pace[6]).toBeCloseTo(2200 * 7);
+  });
+  it('月：その月の日数分（11月は30日）', () => {
+    const m = buildPeriod([row('2026-11-02', { used: 1000 })], 'k', 'month', '2026-11-01', '2026-11-30', '2026-11-03');
+    expect(m).toMatchObject({ goal: 2200 * 30, dayCount: 30, elapsedDays: 3, total: 1000 });
   });
 
   it('週の目標のターゲットを週で見ると、その週の目標と比べる。日の判定は1日あたり', () => {

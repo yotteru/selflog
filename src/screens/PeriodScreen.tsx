@@ -1,28 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchRange } from '../lib/api';
-import { addDays, diffDays } from '../lib/dayKey';
+import { addDays } from '../lib/dayKey';
 import { monthRange, rangeLabel, weekRange } from '../lib/days';
-import { COLORS, fmt, gauge, isMoney, PERIOD_WORD } from '../lib/display';
-import { buildPeriod, periodTargets, type DayStatus, type PeriodView } from '../lib/period';
+import { COLORS, gauge, isMoney, PERIOD_WORD } from '../lib/display';
+import { buildPeriod, periodTargets, type PeriodView } from '../lib/period';
 import type { RangeRow } from '../lib/types';
 import { useSwipe } from '../lib/useSwipe';
+import { amount, BarChart, Calendar, LineChart } from '../components/PeriodCharts';
 
-const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
+type Chart = 'bar' | 'line' | 'calendar';
+const CHART_LABEL: Record<Chart, string> = { bar: '棒', line: '折れ線', calendar: 'カレンダー' };
+const CHARTS: Record<PeriodView, Chart[]> = { week: ['bar', 'line'], month: ['calendar', 'bar', 'line'] };
+const CHART_KEY = 'zanryo.periodChart.v1';
+
+/** 週・月ごとに、最後に選んだグラフの種類（この端末に保存） */
+function loadChart(view: PeriodView): Chart {
+  try {
+    const v = (JSON.parse(localStorage.getItem(CHART_KEY) || '{}') as Record<string, Chart>)[view];
+    if (v && CHARTS[view].includes(v)) return v;
+  } catch {
+    /* noop */
+  }
+  return CHARTS[view][0];
+}
+function saveChart(view: PeriodView, chart: Chart) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CHART_KEY) || '{}') as Record<string, Chart>;
+    localStorage.setItem(CHART_KEY, JSON.stringify({ ...all, [view]: chart }));
+  } catch {
+    /* noop */
+  }
+}
+
 const GOAL_AT = 0.8;
-
-const amount = (t: { key: string | null; unit: string }, n: number) => (isMoney(t) ? `¥${fmt(n)}` : `${fmt(n)}${t.unit}`);
-
-const BAR_COLOR: Record<DayStatus, string> = {
-  ok: COLORS.accent,
-  ng: COLORS.over,
-  missing: 'transparent',
-  today: '#93B4FF',
-  future: 'transparent',
-};
 
 /** 期間（v1）：週・月で、合計と目標・日ごとの棒やカレンダー・目標内／超過／未記録の日数を見る */
 export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (day: string) => void }) {
   const [view, setView] = useState<PeriodView>('week');
+  const [chart, setChartState] = useState<Chart>(() => loadChart('week'));
+  const changeView = (v: PeriodView) => {
+    setView(v);
+    setChartState(loadChart(v));
+  };
+  const setChart = (c: Chart) => {
+    setChartState(c);
+    saveChart(view, c);
+  };
   const [anchor, setAnchor] = useState(today);
   // 読み込んだデータは、どの期間のものかと一緒に持つ（切り替えた直後に前の期間のデータで描かないため）
   const [loaded, setLoaded] = useState<{ key: string; rows: RangeRow[] } | null>(null);
@@ -67,18 +90,16 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
   const done = !!g && target?.kind === 'reach' && g.pct === '';
   const over = !!g && g.over > 0;
 
-  const maxBar = result ? Math.max(1, ...result.days.map((d) => d.used), ...result.days.map((d) => d.dailyGoal * 1.25)) : 1;
-  const firstDow = (new Date(`${range.from}T00:00:00Z`).getUTCDay() + 6) % 7;
 
   return (
     <div className="period-screen swipe-area" ref={swipe.ref} {...swipe.handlers}>
       <header className="day-header">
         <h1>期間</h1>
         <div className="seg" role="group" aria-label="期間の単位">
-          <button type="button" aria-pressed={view === 'week'} onClick={() => setView('week')}>
+          <button type="button" aria-pressed={view === 'week'} onClick={() => changeView('week')}>
             週
           </button>
-          <button type="button" aria-pressed={view === 'month'} onClick={() => setView('month')}>
+          <button type="button" aria-pressed={view === 'month'} onClick={() => changeView('month')}>
             月
           </button>
         </div>
@@ -118,7 +139,7 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
               <span className="caption">
                 {target.name}：{isCurrent ? (view === 'week' ? '今週' : '今月') : 'この期間'}
                 {target.kind === 'reach' ? 'の合計（到達）' : isMoney(target) ? '使った額' : 'の合計'}
-                {result.goalBasis === 'period' ? `（目標は${PERIOD_WORD[target.period].label}）` : `（記録した${result.recordedDays}日分の目標と比べる）`}
+                {result.goalBasis === 'period' ? `（目標は${PERIOD_WORD[target.period].label}）` : `（${result.dayCount}日分の目標と比べる）`}
               </span>
               <strong className="period-total">
                 {amount(target, result.total)} <small>/ {amount(target, result.goal)}</small>
@@ -132,64 +153,23 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
             <div className="meter-goal" style={{ left: `${GOAL_AT * 100}%` }} />
           </div>
           <span className="caption">
-            1日平均 {amount(target, result.average)}
+            1日平均 {amount(target, result.average)}（{result.elapsedDays}日）
             {target.period !== 'day' && ` · 1日あたりの目標 ${amount(target, result.days.find((d) => d.dailyGoal)?.dailyGoal ?? 0)}`}
           </span>
 
-          {view === 'week' ? (
-            <>
-              <div className="bars" aria-label="日ごとの量">
-                <div className="bars-goal" style={{ bottom: `${((result.days[0]?.dailyGoal ?? 0) / maxBar) * 100}%` }}>
-                  <span>1日の目標</span>
-                </div>
-                {result.days.map((d) => (
-                  <button
-                    key={d.day}
-                    type="button"
-                    className={`bar ${d.status}`}
-                    aria-label={`${d.day} ${d.status === 'missing' ? '未記録' : amount(target, d.used)}`}
-                    disabled={d.status === 'future' || diffDays(today, d.day) > 30}
-                    onClick={() => onOpenDay(d.day)}
-                  >
-                    <span
-                      style={{
-                        height: d.status === 'missing' ? '30%' : d.status === 'future' ? '0%' : `${Math.max(2, (d.used / maxBar) * 100)}%`,
-                        background: target.kind === 'reach' && d.status === 'ng' ? '#93B4FF' : BAR_COLOR[d.status],
-                      }}
-                    />
-                  </button>
-                ))}
-              </div>
-              <div className="bar-labels">
-                {result.days.map((d, i) => (
-                  <span key={d.day}>{d.day === today ? '今日' : WEEKDAYS[i]}</span>
-                ))}
-              </div>
-            </>
+          <div className="chart-switch seg small" role="group" aria-label="グラフの種類">
+            {CHARTS[view].map((c) => (
+              <button key={c} type="button" aria-pressed={chart === c} onClick={() => setChart(c)}>
+                {CHART_LABEL[c]}
+              </button>
+            ))}
+          </div>
+          {chart === 'line' ? (
+            <LineChart result={result} target={target} today={today} />
+          ) : chart === 'calendar' && view === 'month' ? (
+            <Calendar result={result} target={target} today={today} from={range.from} onOpenDay={onOpenDay} />
           ) : (
-            <div className="calendar" aria-label="カレンダー">
-              {WEEKDAYS.map((w) => (
-                <span key={w} className="cal-dow">
-                  {w}
-                </span>
-              ))}
-              {Array.from({ length: firstDow }, (_, i) => (
-                <span key={`b${i}`} />
-              ))}
-              {result.days.map((d) => (
-                <button
-                  key={d.day}
-                  type="button"
-                  className={`cal-cell ${d.status} ${target.kind === 'reach' ? 'reach' : ''}`}
-                  disabled={d.status === 'future' || diffDays(today, d.day) > 30}
-                  onClick={() => onOpenDay(d.day)}
-                  aria-label={`${d.day} ${{ ok: target.kind === 'reach' ? '達成' : '目標内', ng: target.kind === 'reach' ? '届かず' : '超過', missing: '未記録', today: '今日', future: '' }[d.status]}`}
-                >
-                  <span className="d">{Number(d.day.slice(8))}</span>
-                  <span className="m">{{ ok: '○', ng: target.kind === 'reach' ? '△' : '×', missing: '未', today: '今日', future: '' }[d.status]}</span>
-                </button>
-              ))}
-            </div>
+            <BarChart result={result} target={target} today={today} onOpenDay={onOpenDay} />
           )}
 
           <div className="count-row">
@@ -217,11 +197,11 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
           </div>
         </section>
       )}
-      {result && (
+      {result && chart !== 'line' && (
         <p className="hint">
-          {view === 'week'
-            ? '棒：青＝目標内（到達型は達成）· オレンジ＝超過 · 点線＝未記録 · 薄い青＝今日（途中）。タップでその日を開く'
-            : '○＝目標内（到達型は達成）· ×＝超過 · 点線＝未記録。タップでその日を開く（直近31日）'}
+          {chart === 'calendar'
+            ? '○＝目標内（到達型は達成）· ×＝超過 · 点線＝未記録。タップでその日を開く（直近31日）'
+            : '棒：青＝目標内（到達型は達成）· オレンジ＝超過 · 点線＝未記録 · 薄い青＝今日（途中）。タップでその日を開く'}
         </p>
       )}
     </div>
