@@ -243,6 +243,33 @@ export function extractJsonLoose(body: unknown): unknown {
   }
 }
 
+/**
+ * 429 のうち「Google 検索（グラウンディング）の上限」によるものか。
+ * 無料枠では検索の上限が別にあり、0回（使えない）のこともある。その場合は通常の上限ではないので、検索なしに切り替えてよい。
+ */
+export function isSearchQuota(errorBody: unknown): boolean {
+  let text = '';
+  try {
+    text = JSON.stringify(errorBody ?? '');
+  } catch {
+    return false;
+  }
+  return /grounding|google_search|search/i.test(text);
+}
+
+/** 429 の本文から、当たった上限の名前（quotaMetric の最後の部分）を取り出す。手がかりとして画面に出すため */
+export function quotaName(errorBody: unknown): string | null {
+  let text = '';
+  try {
+    text = JSON.stringify(errorBody ?? '');
+  } catch {
+    return null;
+  }
+  const m = /"quota(?:Metric|Id)"\s*:\s*"([^"]+)"/.exec(text);
+  if (!m) return null;
+  return m[1].split('/').pop()!.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) || null;
+}
+
 /** 検索で見たページ（出典）。https のものだけ、3件まで */
 export function extractSources(body: unknown): Source[] {
   const chunks = (body as { candidates?: { groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[] })
@@ -339,13 +366,15 @@ async function handle(req: Request): Promise<Response> {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify(payload),
       });
-      return { status: res.status, body: res.ok ? await res.json() : null };
+      // 失敗時の本文は、上限の種類を見分けるためだけに使う（ログには残さない）
+      const body = await res.json().catch(() => null);
+      return { status: res.status, body };
     } finally {
       clearTimeout(timer);
     }
   };
-  const errorOf = (status: number) => {
-    if (status === 429) return fail(200, 'rate_limited');
+  const errorOf = (status: number, detail?: string) => {
+    if (status === 429) return fail(200, 'rate_limited', detail ?? 'gemini_429');
     console.error('gemini error', status); // 本文は記録しない（画像や読み取り内容を残さない）
     return fail(200, 'failed', `gemini_${status}`);
   };
@@ -367,8 +396,9 @@ async function handle(req: Request): Promise<Response> {
           if (draft) return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true });
           return fail(200, 'failed', 'unreadable');
         }
-        if (r.status === 429) return errorOf(429);
-        // 検索が使えない（400/403 など）→ 検索なしで1回だけ呼び直す
+        // 通常の上限なら呼び直さない。検索だけの上限（無料枠で検索が使えないなど）なら、検索なしに切り替える
+        if (r.status === 429 && !isSearchQuota(r.body)) return errorOf(429, `gemini_429:${quotaName(r.body) ?? 'unknown'}`);
+        // 検索が使えない（400/403、検索の上限の 429 など）→ 検索なしで1回だけ呼び直す
         const again = await consume();
         if (again) return again;
       }
@@ -376,7 +406,7 @@ async function handle(req: Request): Promise<Response> {
         contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, false) }] }],
         generationConfig: { responseMimeType: 'application/json', responseSchema: LOOKUP_SCHEMA, temperature: 0.2 },
       });
-      if (r.status !== 200) return errorOf(r.status);
+      if (r.status !== 200) return errorOf(r.status, r.status === 429 ? `gemini_429:${quotaName(r.body) ?? 'unknown'}` : undefined);
       const draft = validateLookup(extractJson(r.body));
       return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false }) : fail(200, 'failed', 'unreadable');
     }
@@ -386,7 +416,7 @@ async function handle(req: Request): Promise<Response> {
       contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: PROMPTS[m] }] }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMAS[m], temperature: 0.2 },
     });
-    if (r.status !== 200) return errorOf(r.status);
+    if (r.status !== 200) return errorOf(r.status, r.status === 429 ? `gemini_429:${quotaName(r.body) ?? 'unknown'}` : undefined);
     const draft = validateDraft(m, extractJson(r.body));
     return draft ? json(200, { ok: true, mode, draft }) : fail(200, 'failed', 'unreadable');
   } catch (e) {

@@ -87,3 +87,20 @@ describe('名前で調べる', () => {
     expect(extractSources({})).toEqual([]);
   });
 });
+
+import { isSearchQuota, quotaName } from '../functions/zanryo-estimate-nutrition/index';
+
+describe('429 の種類', () => {
+  it('検索（グラウンディング）の上限なら true、通常の上限なら false', () => {
+    const search = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/search_grounding_request_count', quotaValue: '0' }] }] } };
+    const normal = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaValue: '15' }] }] } };
+    expect(isSearchQuota(search)).toBe(true);
+    expect(isSearchQuota(normal)).toBe(false);
+    expect(isSearchQuota(null)).toBe(false);
+  });
+  it('当たった上限の名前を取り出す', () => {
+    const normal = { error: { details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests' }] }] } };
+    expect(quotaName(normal)).toBe('generate_content_free_tier_requests');
+    expect(quotaName({ error: { message: 'x' } })).toBeNull();
+  });
+});
