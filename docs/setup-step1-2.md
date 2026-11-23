@@ -1,7 +1,7 @@
 # ステップ1〜2：セットアップと動作確認
 
 残量アプリは **shiori と同じ Supabase プロジェクト**に入れる。Windowsだけで進められる手順にしてある
-（Supabase CLI は Edge Function のデプロイにだけ使い、`npx supabase` で動かす。インストールは不要）。
+（ダッシュボードとiPhoneだけで進められる。コマンドは使わなくてよい）。
 
 ## shiori と分けるためのルール
 
@@ -78,7 +78,24 @@ where n.nspname in ('zanryo', 'zanryo_private') and c.relkind = 'r';
    ```
    → kcal の remaining が 1340、money が 420 になる。
 
-## 4. Edge Function `zanryo-widget-summary` をデプロイする
+## 4. Edge Function `zanryo-widget-summary` を置く
+
+ウィジェットはDBを直接読めないので、間に Edge Function を置く：
+iPhoneのウィジェット →（トークン）→ Edge Function →（正しければ）→ DBから残量を読んで返す。
+
+### やり方A：ダッシュボードだけで（おすすめ）
+
+1. shiori のプロジェクトで **Edge Functions** → **Deploy a new function** → **Via Editor**。
+2. 関数名を **`zanryo-widget-summary`** にする。
+3. エディタの中身を消し、`supabase/functions/zanryo-widget-summary/index.ts` の中身を貼り付けて **Deploy**。
+4. その関数の設定で **Verify JWT（JWTの検証）をオフ**にして保存する。
+   - オフにしないと、ウィジェットからのアクセスがすべてはじかれる。
+   - ウィジェット用トークンはJWTではないため。トークンの照合は関数の中で行うので、オフにしても他人は読めない。
+5. 関数のページに出ている URL（`https://<project-ref>.supabase.co/functions/v1/zanryo-widget-summary`）をコピーしておく。
+
+`SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` は自動で入るので、シークレットの設定は不要。
+
+### やり方B：コマンドで（Node.js が入っている場合）
 
 `<project-ref>` は shiori のプロジェクトのもの（ダッシュボードのURL `supabase.com/dashboard/project/<project-ref>` の部分）。
 
@@ -90,11 +107,9 @@ npx supabase login
 npx supabase functions deploy zanryo-widget-summary --project-ref <project-ref> --no-verify-jwt
 ```
 
-- `--no-verify-jwt`：ウィジェット用トークンはJWTではないので、ゲートウェイのJWT検証を切る。照合は関数の中でハッシュを比べて行う（`supabase/config.toml` にも書いてある）。
-- `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` はEdge Functionに自動で入るので、設定は不要。
-- ダッシュボードの **Edge Functions** に、shiori の関数と並んで `zanryo-widget-summary` が出ていればOK。
+### 確認
 
-### 確認（PowerShell）
+手順5の Scriptable の「取得結果を表示」で確かめられる。PC で確かめたいときは PowerShell で：
 
 ```powershell
 curl.exe -s https://<project-ref>.supabase.co/functions/v1/zanryo-widget-summary -H "Authorization: Bearer zr_..."
@@ -108,7 +123,7 @@ curl.exe -s https://<project-ref>.supabase.co/functions/v1/zanryo-widget-summary
 1. App Store で **Scriptable** を入れる。
 2. 新しいスクリプトを作り、`widget/zanryo.js` の中身を貼り付け、名前を **zanryo** にする。
    （iCloud Drive の Scriptable フォルダに `zanryo.js` を置いてもよい）
-3. スクリプトを実行 →「URLとトークンを設定」
+3. スクリプトを実行（右下の ▶）→「URLとトークンを設定」
    - URL: `https://<project-ref>.supabase.co/functions/v1/zanryo-widget-summary`
    - トークン: 手順3でメモした `zr_...`
 4. 「取得結果を表示」で JSON が出ることを確認。「プレビュー：円形／横長／小／中」で見た目を確認。
