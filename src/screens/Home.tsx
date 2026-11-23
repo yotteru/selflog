@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { createPreset, fetchDay, loadCache, saveCache, setConfirmedEmpty, updateEntry, type DayData } from '../lib/api';
+import { createPreset, fetchDay, loadCache, lookupByName, saveCache, setConfirmedEmpty, updateEntry, type DayData } from '../lib/api';
 import { addDays, formatDayLabel, formatDayLong, todayKey } from '../lib/dayKey';
 import { clampDay, dayBounds, dayTitle, daysWithQueuedAdds, missingBannerText, relativeLabel } from '../lib/days';
 import { type View } from '../lib/display';
@@ -337,6 +337,7 @@ export function Home({ onSignOut }: { onSignOut: () => void }) {
           title={isToday ? '手入力で記録' : `${formatDayLabel(day)}に手入力で記録`}
           submitLabel="記録する"
           allowSaveAsPreset
+          onLookup={lookupByName}
           onSubmit={submitManual}
           onClose={() => setSheet(null)}
         />

@@ -11,7 +11,7 @@
 |---|---|
 | `supabase/sql/` | DBに流すSQL（番号順に SQL Editor で実行。[一覧](supabase/sql/README.md)） |
 | `supabase/functions/zanryo-widget-summary/` | ウィジェット用 Edge Function |
-| `supabase/functions/zanryo-estimate-nutrition/` | 写真（料理・成分表示・レシート）を Gemini で読み取る Edge Function |
+| `supabase/functions/zanryo-estimate-nutrition/` | 写真（料理・成分表示・レシート）の読み取りと、名前で調べる（Google 検索つき）Edge Function |
 | `supabase/tests/` | SQLのテスト（PGlite上で `supabase/sql/` を流して確かめる） |
 | `src/` | PWA（Vite + React + TypeScript）。`src/lib/` に日付・表示ルール・送信キューなど |
 | `src/lib/dayKey.ts` | 1日の区切り（朝4:00 JST）のユーティリティ |
@@ -56,6 +56,7 @@ Supabaseに接続せずに、shiori との分離（public に何も作らない�
 - アプリ側の1日の上限 `ZANRYO_GEMINI_DAILY_LIMIT` は初期値 **100**（500 より十分少ない）。
 - 上限は Google のプロジェクト単位で、同じプロジェクトのほかのアプリと分け合う。このアプリ専用のプロジェクトでキーを作る。
 - 1日の区切りは太平洋時間の0時（無料枠のリセットに合わせる）。
+- 「名前で調べる」は Google 検索つきで呼ぶ（Grounding with Google Search）。無料枠で使える回数は AI Studio で確認する。使えないときは検索なしに自動で切り替わる。
 
 - [x] 5. 5.3（過去の日・記録漏れのバナー）（**実機確認待ち**）
 - [x] 6. 5.4（設定）と仕上げ（**実機確認待ち**）

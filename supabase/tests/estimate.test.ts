@@ -46,3 +46,44 @@ describe('extractJson / isMode', () => {
     expect(isMode('x')).toBe(false);
   });
 });
+
+import { extractJsonLoose, extractSources, lookupPrompt, normalizeQuery, validateLookup } from '../functions/zanryo-estimate-nutrition/index';
+
+describe('名前で調べる', () => {
+  it('調べる言葉：改行や制御文字を消し、60文字まで。空はだめ', () => {
+    expect(normalizeQuery('  吉野家\n牛丼\t並盛 ')).toBe('吉野家 牛丼 並盛');
+    expect(normalizeQuery('a'.repeat(100))).toHaveLength(60);
+    expect(normalizeQuery('   ')).toBeNull();
+    expect(normalizeQuery(123)).toBeNull();
+  });
+  it('指示文に言葉が入り、検索つきは JSON だけを書くよう指示する', () => {
+    expect(lookupPrompt('吉野家 牛丼', true)).toContain('「吉野家 牛丼」');
+    expect(lookupPrompt('x', true)).toContain('JSON だけ');
+    expect(lookupPrompt('x', false)).not.toContain('JSON だけ');
+  });
+  it('検証：範囲内なら通す。値段は整数、無ければ null', () => {
+    expect(validateLookup({ name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high' })).toEqual({
+      name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high',
+    });
+    expect(validateLookup({ name: 'x', serving: '', kcal: 100, p: 1, f: 1, c: 1, price: null })).toMatchObject({ price: null, confidence: 'low' });
+    expect(validateLookup({ name: 'x', serving: '', kcal: 100, p: 1, f: 1, c: 1, price: 'わからない' })).toMatchObject({ price: null });
+    expect(validateLookup({ name: 'x', kcal: 9999, p: 1, f: 1, c: 1 })).toBeNull();
+  });
+  it('文章の中の JSON を取り出す（``` で囲まれていても）', () => {
+    const body = { candidates: [{ content: { parts: [{ text: 'はい。\n```json\n{"name":"牛丼","kcal":635}\n```' }] } }] };
+    expect(extractJsonLoose(body)).toEqual({ name: '牛丼', kcal: 635 });
+    expect(extractJsonLoose({ candidates: [{ content: { parts: [{ text: '分かりません' }] } }] })).toBeNull();
+  });
+  it('出典：https だけ、重複なし、3件まで', () => {
+    const web = (uri: string, title = 't') => ({ web: { uri, title } });
+    const body = {
+      candidates: [{ groundingMetadata: { groundingChunks: [web('https://a.example/1', '吉野家'), web('http://b.example'), web('https://a.example/1'), web('https://c.example'), web('https://d.example'), web('https://e.example')] } }],
+    };
+    expect(extractSources(body)).toEqual([
+      { uri: 'https://a.example/1', title: '吉野家' },
+      { uri: 'https://c.example', title: 't' },
+      { uri: 'https://d.example', title: 't' },
+    ]);
+    expect(extractSources({})).toEqual([]);
+  });
+});

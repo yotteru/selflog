@@ -101,19 +101,21 @@ export type EstimateResult =
   | { ok: true; mode: 'photo'; draft: { name: string; kcal: number; p: number; f: number; c: number; confidence: 'low' | 'mid' | 'high' } }
   | { ok: true; mode: 'label'; draft: { basis: 'per100g' | 'per_unit'; unit_label: string; unit_grams: number | null; kcal: number; p: number; f: number; c: number } }
   | { ok: true; mode: 'receipt'; draft: { store: string; total: number; items: { name: string; price: number }[] } }
-  | { ok: false; reason: 'not_member' | 'bad_request' | 'daily_limit' | 'rate_limited' | 'failed' | 'offline'; detail?: string };
+  | Failure;
 
-/** 写真から下書きを作る（Edge Function zanryo-estimate-nutrition）。失敗しても例外にせず、理由を返す */
-export async function estimate(mode: EstimateMode, image: string): Promise<EstimateResult> {
+type Failure = { ok: false; reason: 'not_member' | 'bad_request' | 'daily_limit' | 'rate_limited' | 'failed' | 'offline'; detail?: string };
+
+/** Edge Function zanryo-estimate-nutrition を呼ぶ。失敗しても例外にせず、理由を返す */
+async function invokeEstimate<T>(body: Record<string, unknown>): Promise<T | Failure> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return { ok: false, reason: 'offline' };
-  const { data, error } = await supabase.functions.invoke('zanryo-estimate-nutrition', { body: { mode, image } });
-  if (data && typeof data === 'object' && 'ok' in data) return data as EstimateResult;
+  const { data, error } = await supabase.functions.invoke('zanryo-estimate-nutrition', { body });
+  if (data && typeof data === 'object' && 'ok' in data) return data as T;
   // 失敗の手がかり：関数が返した理由、なければ HTTP の番号（404=関数が無い、401=ログイン/JWT の設定 など）
   const res = (error as { context?: Response } | null)?.context;
   if (res && typeof res.status === 'number') {
     try {
-      const body = await res.clone().json();
-      if (body && typeof body === 'object' && 'ok' in body) return body as EstimateResult;
+      const b = await res.clone().json();
+      if (b && typeof b === 'object' && 'ok' in b) return b as T;
     } catch {
       /* 本文が JSON でない */
     }
@@ -121,6 +123,35 @@ export async function estimate(mode: EstimateMode, image: string): Promise<Estim
   }
   return { ok: false, reason: 'failed', detail: error ? (error as Error).name || 'error' : 'no_response' };
 }
+
+/** 写真から下書きを作る */
+export function estimate(mode: EstimateMode, image: string): Promise<EstimateResult> {
+  return invokeEstimate<EstimateResult>({ mode, image });
+}
+
+export type LookupResult =
+  | {
+      ok: true;
+      draft: { name: string; serving: string; kcal: number; p: number; f: number; c: number; price: number | null; confidence: 'low' | 'mid' | 'high' };
+      sources: { title: string; uri: string }[];
+      /** Google 検索を使えたか（false なら Gemini の知識だけ） */
+      searched: boolean;
+    }
+  | Failure;
+
+/** 名前で調べる（例：「吉野家 牛丼 並盛」）。送るのは言葉だけ */
+export function lookupByName(query: string): Promise<LookupResult> {
+  return invokeEstimate<LookupResult>({ mode: 'name', query });
+}
+
+export const FAILURE_TEXT: Record<Failure['reason'], string> = {
+  daily_limit: '今日の推定回数の上限に達しました。手入力してください。',
+  rate_limited: '今は推定できません（無料枠の上限）。少し待つか、手入力してください。',
+  offline: 'オフラインのため調べられません。手入力してください。',
+  not_member: 'このアプリの利用者として登録されていません。',
+  bad_request: '送れませんでした。手入力してください。',
+  failed: 'うまく調べられませんでした。手入力してください。',
+};
 
 export async function updateEntry(id: string, label: string, values: Amounts): Promise<void> {
   check(await supabase.rpc('update_entry', { p_id: id, p_values: values, p_label: label }));

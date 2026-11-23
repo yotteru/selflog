@@ -2,7 +2,8 @@
 // 残量アプリ（zanryo）: 写真から栄養値・金額の下書きを作る。仕様 §6（ステップ4）。
 //
 // 入力: { mode: 'photo' | 'label' | 'receipt', image: <JPEG の base64> }
-// 出力: { ok: true, mode, draft } または { ok: false, reason, draft: null }
+//    または { mode: 'name', query: '吉野家 牛丼 並盛' }（名前で調べる。Google 検索つき）
+// 出力: { ok: true, mode, draft, sources? } または { ok: false, reason, draft: null }
 //   reason: not_member / bad_request / daily_limit / rate_limited / failed
 //   detail: 失敗したときの手がかり（例: gemini_404, usage_check_401, no_api_key）。秘密の値や読み取り内容は入れない
 //
@@ -17,6 +18,10 @@
 //   ZANRYO_GEMINI_MODEL        … 省略時 gemini-flash-lite-latest
 //   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 100（無料枠の1日の上限 500 より十分少なく）
 //   ZANRYO_ALLOWED_ORIGINS     … 省略時 https://yotteru.github.io,http://localhost:5173
+//   ZANRYO_GEMINI_SEARCH       … 省略時 on。off にすると「名前で調べる」で Google 検索を使わない
+//
+// 名前で調べる：まず Google 検索つきで呼ぶ。検索が使えない（無料枠の対象外など）と断られたら、
+// 検索なし（Gemini の知識だけ）で1回だけ呼び直す。429（レート上限）は呼び直さない。
 //
 // ダッシュボードに貼り付けて使えるよう、1ファイルにまとめ、外部ライブラリを使っていない。
 // 下の純粋な関数はテスト（supabase/tests/estimate.test.ts）から読み込む。
@@ -156,6 +161,105 @@ export function isMode(v: unknown): v is Mode {
 }
 
 // ---------------------------------------------------------------------------
+// 名前で調べる（例：「吉野家 牛丼 並盛」）
+// ---------------------------------------------------------------------------
+
+export interface LookupDraft {
+  name: string;
+  serving: string;
+  kcal: number;
+  p: number;
+  f: number;
+  c: number;
+  price: number | null;
+  confidence: 'low' | 'mid' | 'high';
+}
+export interface Source {
+  title: string;
+  uri: string;
+}
+
+/** 調べる言葉を整える。改行・制御文字を消し、60文字まで。空なら null */
+export function normalizeQuery(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const q = v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return q.length >= 1 ? q : null;
+}
+
+export const LOOKUP_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: STR,
+    serving: STR,
+    kcal: NUM,
+    p: NUM,
+    f: NUM,
+    c: NUM,
+    price: { type: 'INTEGER', nullable: true },
+    confidence: { type: 'STRING', enum: ['low', 'mid', 'high'] },
+  },
+  required: ['name', 'serving', 'kcal', 'p', 'f', 'c', 'confidence'],
+};
+
+export function lookupPrompt(query: string, withSearch: boolean): string {
+  return (
+    `次の食べ物・飲み物の、1人前の栄養成分を${withSearch ? '調べて' : '答えて'}ください：「${query}」\n` +
+    '・チェーン店や市販品なら、その会社の公式の栄養成分表の値を優先する。サイズの指定が無ければ標準（並・Mなど）にする。\n' +
+    '・name は商品名（短く）、serving は量（例: 並盛 1杯, 1個）、kcal、p（たんぱく質g）、f（脂質g）、c（炭水化物g。無ければ糖質＋食物繊維）。\n' +
+    '・price は日本での税込価格（円・整数）。分からなければ null。\n' +
+    '・確かな値なら confidence=high、推定なら mid か low。食べ物として特定できなければ name を空、数値は0、confidence=low。\n' +
+    (withSearch
+      ? '・答えは次の形の JSON だけを書く（説明や ``` は書かない）：{"name":"","serving":"","kcal":0,"p":0,"f":0,"c":0,"price":null,"confidence":"low"}'
+      : '')
+  );
+}
+
+export function validateLookup(raw: unknown): LookupDraft | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const kcal = num(o.kcal, 0, 3000);
+  const p = num(o.p, 0, 300);
+  const f = num(o.f, 0, 300);
+  const c = num(o.c, 0, 500);
+  if (kcal == null || p == null || f == null || c == null) return null;
+  const price = o.price == null || o.price === '' ? null : num(o.price, 0, 100_000);
+  const confidence = o.confidence === 'high' || o.confidence === 'mid' ? o.confidence : 'low';
+  return { name: str(o.name, 40), serving: str(o.serving, 20), kcal, p, f, c, price: price == null ? null : Math.round(price), confidence };
+}
+
+/** 検索つきの返事は JSON 指定ができないので、文章の中から JSON を取り出す */
+export function extractJsonLoose(body: unknown): unknown {
+  const text = (body as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? '')
+    .join('');
+  if (!text) return null;
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/** 検索で見たページ（出典）。https のものだけ、3件まで */
+export function extractSources(body: unknown): Source[] {
+  const chunks = (body as { candidates?: { groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[] })
+    ?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+  const out: Source[] = [];
+  for (const ch of chunks) {
+    const uri = ch?.web?.uri;
+    if (typeof uri !== 'string' || !uri.startsWith('https://') || uri.length > 2000) continue;
+    if (out.some((s) => s.uri === uri)) continue;
+    out.push({ title: str(ch.web?.title, 60) || 'ページ', uri });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // ここから下は Edge Function（Deno）で動くときだけ使う
 // ---------------------------------------------------------------------------
 
@@ -196,51 +300,98 @@ async function handle(req: Request): Promise<Response> {
   if ((await member.json()) !== true) return fail(403, 'not_member');
 
   // 2) 入力
-  let mode: unknown, image: unknown;
+  let body: { mode?: unknown; image?: unknown; query?: unknown };
   try {
-    ({ mode, image } = await req.json());
+    body = await req.json();
   } catch {
     return fail(400, 'bad_request');
   }
-  if (!isMode(mode) || typeof image !== 'string' || image.length < 100 || image.length > MAX_IMAGE_CHARS || !/^[A-Za-z0-9+/=]+$/.test(image)) {
+  const mode = body.mode;
+  const image = body.image;
+  const query = mode === 'name' ? normalizeQuery(body.query) : null;
+  if (mode === 'name') {
+    if (!query) return fail(400, 'bad_request');
+  } else if (!isMode(mode) || typeof image !== 'string' || image.length < 100 || image.length > MAX_IMAGE_CHARS || !/^[A-Za-z0-9+/=]+$/.test(image)) {
     return fail(400, 'bad_request');
   }
 
-  // 3) 1日の上限（超えていたら Gemini を呼ばない）
+  // 3) 1日の上限（超えていたら Gemini を呼ばない）。呼ぶたびに1回数える
   const service = env('SUPABASE_SERVICE_ROLE_KEY')!;
   const limit = Number(env('ZANRYO_GEMINI_DAILY_LIMIT') ?? '100');
-  const consumed = await rpc('try_consume_gemini_call', { p_daily_limit: limit }, service, `Bearer ${service}`);
-  if (!consumed.ok) return fail(500, 'failed', `usage_check_${consumed.status}`);
-  if ((await consumed.json()) !== true) return fail(200, 'daily_limit');
+  const consume = async (): Promise<Response | null> => {
+    const consumed = await rpc('try_consume_gemini_call', { p_daily_limit: limit }, service, `Bearer ${service}`);
+    if (!consumed.ok) return fail(500, 'failed', `usage_check_${consumed.status}`);
+    if ((await consumed.json()) !== true) return fail(200, 'daily_limit');
+    return null;
+  };
 
-  // 4) Gemini（リトライしない）
+  // 4) Gemini（429 はリトライしない）
   const key = env('ZANRYO_GEMINI_API_KEY');
   if (!key) return fail(500, 'failed', 'no_api_key');
   const model = env('ZANRYO_GEMINI_MODEL') ?? 'gemini-flash-lite-latest';
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30_000);
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: PROMPTS[mode] }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMAS[mode], temperature: 0.2 },
-      }),
-    });
-    if (res.status === 429) return fail(200, 'rate_limited');
-    if (!res.ok) {
-      console.error('gemini error', res.status); // 本文は記録しない（画像や読み取り内容を残さない）
-      return fail(200, 'failed', `gemini_${res.status}`);
+  const call = async (payload: unknown) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30_000);
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(payload),
+      });
+      return { status: res.status, body: res.ok ? await res.json() : null };
+    } finally {
+      clearTimeout(timer);
     }
-    const draft = validateDraft(mode, extractJson(await res.json()));
+  };
+  const errorOf = (status: number) => {
+    if (status === 429) return fail(200, 'rate_limited');
+    console.error('gemini error', status); // 本文は記録しない（画像や読み取り内容を残さない）
+    return fail(200, 'failed', `gemini_${status}`);
+  };
+
+  try {
+    const limited = await consume();
+    if (limited) return limited;
+
+    if (mode === 'name') {
+      const useSearch = env('ZANRYO_GEMINI_SEARCH') !== 'off';
+      if (useSearch) {
+        const r = await call({
+          contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, true) }] }],
+          tools: [{ google_search: {} }],
+          generationConfig: { temperature: 0.2 },
+        });
+        if (r.status === 200) {
+          const draft = validateLookup(extractJsonLoose(r.body));
+          if (draft) return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true });
+          return fail(200, 'failed', 'unreadable');
+        }
+        if (r.status === 429) return errorOf(429);
+        // 検索が使えない（400/403 など）→ 検索なしで1回だけ呼び直す
+        const again = await consume();
+        if (again) return again;
+      }
+      const r = await call({
+        contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, false) }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: LOOKUP_SCHEMA, temperature: 0.2 },
+      });
+      if (r.status !== 200) return errorOf(r.status);
+      const draft = validateLookup(extractJson(r.body));
+      return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false }) : fail(200, 'failed', 'unreadable');
+    }
+
+    const m = mode as Mode;
+    const r = await call({
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: PROMPTS[m] }] }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMAS[m], temperature: 0.2 },
+    });
+    if (r.status !== 200) return errorOf(r.status);
+    const draft = validateDraft(m, extractJson(r.body));
     return draft ? json(200, { ok: true, mode, draft }) : fail(200, 'failed', 'unreadable');
   } catch (e) {
     console.error('gemini request failed', (e as Error).name);
     return fail(200, 'failed', (e as Error).name === 'AbortError' ? 'gemini_timeout' : 'gemini_network');
-  } finally {
-    clearTimeout(timer);
   }
 }
 

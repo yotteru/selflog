@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FAILURE_TEXT, type LookupResult } from '../lib/api';
 import type { Amounts } from '../lib/types';
 import { Sheet } from './Sheet';
 
@@ -37,6 +38,7 @@ export function EntryForm({
   onSubmit,
   onDelete,
   deleteLabel = 'この記録を削除する',
+  onLookup,
   onClose,
 }: {
   items: FieldTarget[];
@@ -48,6 +50,8 @@ export function EntryForm({
   onSubmit: (r: EntryFormResult) => Promise<void>;
   onDelete?: () => void;
   deleteLabel?: string;
+  /** 渡すと、名前の横に「調べる」ボタンを出す（名前で栄養成分を調べる） */
+  onLookup?: (query: string) => Promise<LookupResult>;
   onClose: () => void;
 }) {
   const [label, setLabel] = useState(initial?.label ?? '');
@@ -57,6 +61,38 @@ export function EntryForm({
   const [saveAsPreset, setSaveAsPreset] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [looking, setLooking] = useState(false);
+  const [found, setFound] = useState<Extract<LookupResult, { ok: true }> | null>(null);
+  const [lookupError, setLookupError] = useState('');
+
+  async function lookup() {
+    if (!onLookup || !label.trim()) return;
+    setLooking(true);
+    setLookupError('');
+    setFound(null);
+    try {
+      const r = await onLookup(label.trim());
+      if (!r.ok) {
+        setLookupError(FAILURE_TEXT[r.reason] + (r.detail ? `（詳細：${r.detail}）` : ''));
+        return;
+      }
+      if (!r.draft.name && !r.draft.kcal) {
+        setLookupError('見つかりませんでした。言葉を変えるか、手入力してください。');
+        return;
+      }
+      // 見つかった値を入れる（kcal・P・F・C、分かれば値段）。どれも記録する前に直せる
+      const next = { ...vals };
+      for (const i of items) {
+        const v =
+          i.key === 'kcal' ? r.draft.kcal : i.key === 'p' ? r.draft.p : i.key === 'f' ? r.draft.f : i.key === 'c' ? r.draft.c : i.key === 'money' ? r.draft.price : null;
+        if (v != null && v > 0) next[i.target_id] = String(v);
+      }
+      setVals(next);
+      setFound(r);
+    } finally {
+      setLooking(false);
+    }
+  }
 
   const values: Amounts = {};
   for (const [k, v] of Object.entries(vals)) {
@@ -86,8 +122,47 @@ export function EntryForm({
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <label className="field">
           名前
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例：鶏むね肉の定食" maxLength={60} />
+          {onLookup ? (
+            <span className="lookup-row">
+              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例：吉野家 牛丼 並盛" maxLength={60} />
+              <button type="button" className="secondary" onClick={lookup} disabled={looking || !label.trim()}>
+                {looking ? '調べています…' : '調べる'}
+              </button>
+            </span>
+          ) : (
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例：鶏むね肉の定食" maxLength={60} />
+          )}
         </label>
+        {onLookup && !found && !lookupError && (
+          <p className="hint">「調べる」を押すと、名前の言葉だけが Google（Gemini）に送られ、栄養成分と値段を調べます。個人的なことは書かないでください。</p>
+        )}
+        {lookupError && <div className="banner" role="status">{lookupError}</div>}
+        {found && (
+          <div className="lookup-result" role="status">
+            <strong>
+              {found.draft.name || label}
+              {found.draft.serving && `（${found.draft.serving}）`}の値を入れました
+            </strong>
+            {found.draft.confidence !== 'high' && <span className="hint strong">確かな値ではありません。確かめてから記録してください。</span>}
+            {found.searched ? (
+              found.sources.length > 0 && (
+                <span className="hint">
+                  出典：
+                  {found.sources.map((s, i) => (
+                    <span key={s.uri}>
+                      {i > 0 && '、'}
+                      <a href={s.uri} target="_blank" rel="noopener noreferrer">
+                        {s.title}
+                      </a>
+                    </span>
+                  ))}
+                </span>
+              )
+            ) : (
+              <span className="hint">Google 検索が使えなかったため、Gemini の知識から出した値です。</span>
+            )}
+          </div>
+        )}
         <div className="grid-fields">
           {items.map((i) => (
             <label className="field" key={i.target_id}>

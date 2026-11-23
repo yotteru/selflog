@@ -214,3 +214,10 @@ button { cursor: pointer; }
 .token-box { display: flex; flex-direction: column; gap: 8px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 12px; }
 .token-box code, code.url { font-size: 12px; word-break: break-all; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px; user-select: all; -webkit-user-select: all; }
 .link-btn.danger { color: var(--over); }
+
+/* 名前で調べる */
+.lookup-row { display: flex; gap: 8px; }
+.lookup-row input { flex: 1; min-width: 0; }
+.lookup-row .secondary { flex-shrink: 0; min-height: 44px; }
+.lookup-result { display: flex; flex-direction: column; gap: 4px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.lookup-result a { color: var(--accent); }
