@@ -1,4 +1,6 @@
-import { formatDayLabel } from '../lib/dayKey';
+import { addDays, formatDayLabel } from '../lib/dayKey';
+import { dayBounds } from '../lib/days';
+import { useSwipe } from '../lib/useSwipe';
 import { fmt, withUnit } from '../lib/display';
 import type { Entry, SummaryItem } from '../lib/types';
 import { DayHeader } from '../components/DayHeader';
@@ -16,7 +18,7 @@ function summaryOf(e: Entry, items: SummaryItem[]) {
     .join(' · ');
 }
 
-/** 記録一覧（v1 のタブ）。その日の記録をタップで直す・削除する */
+/** 記録一覧（v1 のタブ）。その日の記録をタップで直す・削除する。左右のスワイプで日付が変わる */
 export function EntriesScreen({
   day,
   today,
@@ -50,10 +52,17 @@ export function EntriesScreen({
   onConfirmEmpty: (confirmed: boolean) => void;
   onEdit: (e: Entry) => void;
 }) {
+  const { min } = dayBounds(today);
+  const swipe = useSwipe({
+    onPrev: () => onGo(addDays(day, -1)),
+    onNext: () => onGo(addDays(day, 1)),
+    canPrev: day > min,
+    canNext: !isToday,
+  });
   const kcal = items.find((i) => i.key === 'kcal');
   const money = items.find((i) => i.key === 'money');
   return (
-    <div className="entries-screen">
+    <div className="entries-screen swipe-area" {...swipe}>
       <DayHeader day={day} today={today} title={isToday ? '今日の記録' : `${formatDayLabel(day)}の記録`} onGo={onGo} />
       {loadError && <div className="banner compact" role="status">{loadError}</div>}
       {unsent > 0 && <div className="notice">未送信の記録が {unsent} 件（つながったら送ります）</div>}

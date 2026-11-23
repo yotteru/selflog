@@ -194,7 +194,8 @@ button { cursor: pointer; }
 }
 .app-body {
   flex: 1; min-height: 0; overflow: hidden;
-  padding: calc(env(safe-area-inset-top) + 8px) 16px 8px;
+  /* 下は、タブの真ん中の「＋」が上に飛び出す分（約24px）を空ける */
+  padding: calc(env(safe-area-inset-top) + 8px) 16px 26px;
   display: flex; flex-direction: column;
 }
 .home, .entries-screen, .period-screen { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
@@ -370,4 +371,33 @@ button { cursor: pointer; }
 
 .lookup-row input {
   height: 44px; border: 1px solid var(--tag); border-radius: 10px; padding: 0 12px; font-size: 16px; background: #fff; color: var(--ink);
+}
+
+/* v1.1：スワイプ・目標の表示 */
+.swipe-area { will-change: transform; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.meter-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.meter-foot .pct { white-space: nowrap; }
+.meter-foot span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-filter { height: 40px; border: 1px solid var(--tag); border-radius: 10px; padding: 0 12px; font-size: 16px; background: #fff; }
+
+/* 背の低い画面（iPhone SE など）：ホームを詰めて、棒がなるべくカードの中に収まるように */
+@media (max-height: 700px) {
+  .home { gap: 6px; }
+  .day-header { min-height: 40px; }
+  .day-header h1 { font-size: 18px; }
+  .ring-card { padding: 8px 12px; gap: 10px; }
+  .ring, .ring svg { width: 96px; height: 96px; }
+  .ring-center .value { font-size: 20px; }
+  .ring-center .label, .ring-center .unit { font-size: 10px; }
+  .ring-pct strong { font-size: 20px; }
+  .ring-side { gap: 3px; }
+  .ring-side .name { font-size: 14px; }
+  .meters { padding: 8px 12px; gap: 6px; }
+  .meter-row { gap: 3px; }
+  .meter-head .name { font-size: 12px; }
+  .meter-value .value { font-size: 14px; }
+  .meter-track, .meter-fill, .meter-over { height: 6px; }
+  .meter-goal { height: 12px; }
+  .meter-foot, .meter-sub { font-size: 10px; }
+  .banner.compact { min-height: 32px; padding: 6px 12px; }
 }

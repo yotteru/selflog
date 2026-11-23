@@ -12,7 +12,6 @@ import {
 } from '../lib/api';
 import { formatDayLabel, todayKey } from '../lib/dayKey';
 import { clampDay, daysWithQueuedAdds, missingBannerText } from '../lib/days';
-import { type View } from '../lib/display';
 import { overlay } from '../lib/overlay';
 import { queue } from '../lib/queueInstance';
 import type { Entry, Preset } from '../lib/types';
@@ -44,7 +43,6 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   const [day, setDay] = useState(today);
   const [data, setData] = useState<DayData | null>(() => loadCache(today));
   const [loadError, setLoadError] = useState('');
-  const [view, setView] = useState<View>('front');
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [capture, setCapture] = useState<EstimateMode | null>(null);
@@ -253,9 +251,6 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
         {tab === 'home' && (
           <HomeScreen
             {...common}
-            view={view}
-            onView={setView}
-            presets={current?.presets ?? []}
             monthSaving={current?.monthSaving ?? null}
             banner={isToday ? missingBannerText(missing) : null}
             onBanner={() => missing[0] && goTo(missing[0])}
@@ -263,8 +258,6 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
             confirmedEmpty={noEntries && Boolean(current?.confirmedEmpty)}
             busy={busy}
             onConfirmEmpty={confirmEmpty}
-            onPick={pickPreset}
-            onMorePresets={() => setSheet({ kind: 'record' })}
           />
         )}
         {tab === 'entries' && (

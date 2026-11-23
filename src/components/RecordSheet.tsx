@@ -34,6 +34,8 @@ export function RecordSheet({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('');
+  const shown = filter.trim() ? presets.filter((p) => p.label.includes(filter.trim())) : presets;
   return (
     <Sheet title="記録する" onClose={onClose}>
       <p className="hint">{dayLabel}に入ります</p>
@@ -69,11 +71,16 @@ export function RecordSheet({
         <strong style={{ fontSize: 14 }}>プリセット</strong>
         <span className="hint">よく使う順 · タップで記録</span>
       </div>
+      {presets.length > 8 && (
+        <input className="preset-filter" aria-label="プリセットを探す" placeholder="プリセットを探す" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      )}
       {presets.length === 0 ? (
         <p className="hint">まだありません。記録するときに「プリセットに保存」で作れます。</p>
+      ) : shown.length === 0 ? (
+        <p className="hint">「{filter}」のプリセットはありません。</p>
       ) : (
         <div className="sheet-presets">
-          {presets.map((p) => (
+          {shown.map((p) => (
             <button key={p.id} type="button" className="preset" onClick={() => onPick(p)}>
               <span className="label">＋ {p.label}</span>
               <span className="sub">{presetSub(p.amounts, items)}</span>

@@ -5,6 +5,7 @@ import { monthRange, rangeLabel, weekRange } from '../lib/days';
 import { COLORS, fmt, gauge, isMoney, PERIOD_WORD } from '../lib/display';
 import { buildPeriod, periodTargets, type DayStatus, type PeriodView } from '../lib/period';
 import type { RangeRow } from '../lib/types';
+import { useSwipe } from '../lib/useSwipe';
 
 const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const GOAL_AT = 0.8;
@@ -56,6 +57,12 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
   );
 
   const isCurrent = range.to >= today;
+  // 左右のスワイプで前後の週・月へ（今より先には進まない）
+  const swipe = useSwipe({
+    onPrev: () => setAnchor(addDays(range.from, -1)),
+    onNext: () => setAnchor(addDays(range.to, 1)),
+    canNext: !isCurrent,
+  });
   const g = result && target ? gauge({ kind: target.kind, goal: result.goal, used: result.total }) : null;
   const done = !!g && target?.kind === 'reach' && g.pct === '';
   const over = !!g && g.over > 0;
@@ -64,7 +71,7 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
   const firstDow = (new Date(`${range.from}T00:00:00Z`).getUTCDay() + 6) % 7;
 
   return (
-    <div className="period-screen">
+    <div className="period-screen swipe-area" {...swipe}>
       <header className="day-header">
         <h1>期間</h1>
         <div className="seg" role="group" aria-label="期間の単位">
