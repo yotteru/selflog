@@ -2,18 +2,29 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 /**
- * ログイン（メールのマジックリンク。§8）
- * ホーム画面に追加した PWA では、メールのリンクが Safari で開いてしまい、PWA 側はログインできない（iOS の仕様）。
- * そのため、メールに書かれた確認コードをここに入れてもログインできるようにしている。
+ * ログイン
+ * - ふだん：メールアドレス＋パスワード（ホーム画面のアプリでも使える）
+ * - 初回だけ：Safari でメールのリンクを使ってログインし、アプリの中でパスワードを決める
+ *   （ホーム画面のアプリはメールのリンクを受け取れないため。iOS の仕様）
  */
 export function Login() {
+  const [mode, setMode] = useState<'password' | 'link'>('password');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [sent, setSent] = useState(false);
-  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function send(e: React.FormEvent) {
+  async function loginWithPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setBusy(false);
+    if (error) setError('メールアドレスかパスワードが違います（まだパスワードを決めていなければ、下の「はじめての方」から）');
+  }
+
+  async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setBusy(true);
@@ -30,47 +41,56 @@ export function Login() {
     else setSent(true);
   }
 
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    setBusy(true);
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
-    setBusy(false);
-    if (error) setError('コードが違うか、期限が切れています');
-  }
+  const emailField = (
+    <label className="field">
+      メールアドレス
+      <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+    </label>
+  );
 
   return (
     <main className="screen login">
       <h1>残量</h1>
-      {!sent ? (
-        <form onSubmit={send} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p>メールアドレスにログイン用のメールを送ります。</p>
+      {mode === 'password' ? (
+        <form onSubmit={loginWithPassword} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {emailField}
           <label className="field">
-            メールアドレス
-            <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            パスワード
+            <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           {error && <div className="error" role="alert">{error}</div>}
           <button className="primary" disabled={busy}>
-            メールを送る
+            ログイン
+          </button>
+          <button type="button" className="link-btn" onClick={() => { setMode('link'); setError(''); }}>
+            はじめての方（パスワードをまだ決めていない）
           </button>
         </form>
-      ) : (
-        <form onSubmit={verify} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      ) : sent ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <p>
             {email} にメールを送りました。
             <br />
-            メールに確認コードが書かれていれば、ここに入れてください。リンクを開いてもログインできます（ホーム画面のアプリでは、コードのほうが確実です）。
+            <strong>この Safari で</strong>メールのリンクを開いてください。開くとログインした状態になるので、画面の下の「パスワードを決める」でパスワードを決めます。
           </p>
-          <label className="field">
-            確認コード
-            <input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
-          {error && <div className="error" role="alert">{error}</div>}
-          <button className="primary" disabled={busy || code.trim().length < 6}>
-            ログイン
+          <button type="button" className="link-btn" onClick={() => { setMode('password'); setSent(false); }}>
+            戻る
           </button>
-          <button type="button" className="link-btn" onClick={() => setSent(false)}>
-            メールアドレスを変える
+        </div>
+      ) : (
+        <form onSubmit={sendLink} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p>
+            はじめの1回だけ、メールのリンクでログインしてパスワードを決めます。
+            <br />
+            ホーム画面のアプリではなく、<strong>Safari で</strong>このページを開いて進めてください。
+          </p>
+          {emailField}
+          {error && <div className="error" role="alert">{error}</div>}
+          <button className="primary" disabled={busy}>
+            ログイン用のメールを送る
+          </button>
+          <button type="button" className="link-btn" onClick={() => { setMode('password'); setError(''); }}>
+            パスワードでログインする
           </button>
         </form>
       )}

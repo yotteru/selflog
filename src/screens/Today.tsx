@@ -8,6 +8,7 @@ import type { Entry, Preset } from '../lib/types';
 import { CalorieCard, MacroCard, MoneyCard } from '../components/Cards';
 import { EntryForm, type EntryFormResult } from '../components/EntryForm';
 import { EntryList } from '../components/EntryList';
+import { PasswordSheet } from '../components/PasswordSheet';
 import { PresetGrid, PresetSheet } from '../components/Presets';
 import { Toast, type ToastState } from '../components/Toast';
 
@@ -20,7 +21,7 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState<View>('front');
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [sheet, setSheet] = useState<null | { kind: 'presets' } | { kind: 'add' } | { kind: 'edit'; entry: Entry }>(null);
+  const [sheet, setSheet] = useState<null | { kind: 'presets' } | { kind: 'add' } | { kind: 'password' } | { kind: 'edit'; entry: Entry }>(null);
 
   const showToast = useCallback((message: string, onUndo?: () => void) => setToast({ message, onUndo, key: Date.now() }), []);
 
@@ -163,7 +164,10 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
 
           <EntryList entries={shown.entries} items={items} onEdit={(entry) => setSheet({ kind: 'edit', entry })} />
 
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+            <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'password' })}>
+              パスワードを決める
+            </button>
             <button type="button" className="link-btn" style={{ color: 'var(--sub)' }} onClick={onSignOut}>
               ログアウト
             </button>
@@ -184,6 +188,7 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
           onClose={() => setSheet(null)}
         />
       )}
+      {sheet?.kind === 'password' && <PasswordSheet onClose={() => setSheet(null)} />}
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </main>
   );
