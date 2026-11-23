@@ -88,19 +88,19 @@ describe('名前で調べる', () => {
   });
 });
 
-import { isSearchQuota, quotaName } from '../functions/zanryo-estimate-nutrition/index';
+import { errorHint, quotaName } from '../functions/zanryo-estimate-nutrition/index';
 
 describe('429 の種類', () => {
-  it('検索（グラウンディング）の上限なら true、通常の上限なら false', () => {
-    const search = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/search_grounding_request_count', quotaValue: '0' }] }] } };
-    const normal = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaValue: '15' }] }] } };
-    expect(isSearchQuota(search)).toBe(true);
-    expect(isSearchQuota(normal)).toBe(false);
-    expect(isSearchQuota(null)).toBe(false);
-  });
   it('当たった上限の名前を取り出す', () => {
     const normal = { error: { details: [{ violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests' }] }] } };
     expect(quotaName(normal)).toBe('generate_content_free_tier_requests');
     expect(quotaName({ error: { message: 'x' } })).toBeNull();
+  });
+  it('エラーの手がかり：上限の名前、なければエラー文の先頭（英数字だけ・100文字まで）', () => {
+    expect(errorHint({ error: { details: [{ violations: [{ quotaMetric: 'x/generate_content_free_tier_requests' }] }] } })).toBe('generate_content_free_tier_requests');
+    expect(errorHint({ error: { status: 'RESOURCE_EXHAUSTED', message: 'Resource has been exhausted (e.g. check quota). 日本語' } })).toBe('RESOURCE_EXHAUSTED Resource has been exhausted (e.g. check quota).');
+    expect(errorHint([{ error: { status: 'RESOURCE_EXHAUSTED' } }])).toBe('RESOURCE_EXHAUSTED');
+    expect(errorHint({ error: { message: 'a'.repeat(300) } })).toHaveLength(100);
+    expect(errorHint(null)).toBe('unknown');
   });
 });

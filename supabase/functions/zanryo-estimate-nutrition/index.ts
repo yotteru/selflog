@@ -244,17 +244,16 @@ export function extractJsonLoose(body: unknown): unknown {
 }
 
 /**
- * 429 のうち「Google 検索（グラウンディング）の上限」によるものか。
- * 無料枠では検索の上限が別にあり、0回（使えない）のこともある。その場合は通常の上限ではないので、検索なしに切り替えてよい。
+ * Gemini のエラーの手がかり（画面の「詳細」に出す）。上限の名前か、エラー文の先頭。
+ * 個人情報や秘密の値が混ざらないよう、英数字と一部の記号だけ・100文字までにする。
  */
-export function isSearchQuota(errorBody: unknown): boolean {
-  let text = '';
-  try {
-    text = JSON.stringify(errorBody ?? '');
-  } catch {
-    return false;
-  }
-  return /grounding|google_search|search/i.test(text);
+export function errorHint(errorBody: unknown): string {
+  const q = quotaName(errorBody);
+  if (q) return q;
+  const e = (Array.isArray(errorBody) ? errorBody[0] : errorBody) as { error?: { status?: unknown; message?: unknown } } | null;
+  const msg = [e?.error?.status, e?.error?.message].filter((x) => typeof x === 'string').join(' ');
+  const safe = msg.replace(/[^A-Za-z0-9 _.,:()-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  return safe || 'unknown';
 }
 
 /** 429 の本文から、当たった上限の名前（quotaMetric の最後の部分）を取り出す。手がかりとして画面に出すため */
@@ -373,10 +372,9 @@ async function handle(req: Request): Promise<Response> {
       clearTimeout(timer);
     }
   };
-  const errorOf = (status: number, detail?: string) => {
-    if (status === 429) return fail(200, 'rate_limited', detail ?? 'gemini_429');
+  const errorOf = (status: number, detail: string) => {
     console.error('gemini error', status); // 本文は記録しない（画像や読み取り内容を残さない）
-    return fail(200, 'failed', `gemini_${status}`);
+    return fail(200, status === 429 ? 'rate_limited' : 'failed', detail);
   };
 
   try {
@@ -385,6 +383,7 @@ async function handle(req: Request): Promise<Response> {
 
     if (mode === 'name') {
       const useSearch = env('ZANRYO_GEMINI_SEARCH') !== 'off';
+      let searchFailure = '';
       if (useSearch) {
         const r = await call({
           contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, true) }] }],
@@ -396,9 +395,9 @@ async function handle(req: Request): Promise<Response> {
           if (draft) return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true });
           return fail(200, 'failed', 'unreadable');
         }
-        // 通常の上限なら呼び直さない。検索だけの上限（無料枠で検索が使えないなど）なら、検索なしに切り替える
-        if (r.status === 429 && !isSearchQuota(r.body)) return errorOf(429, `gemini_429:${quotaName(r.body) ?? 'unknown'}`);
-        // 検索が使えない（400/403、検索の上限の 429 など）→ 検索なしで1回だけ呼び直す
+        // 検索つきが失敗したら（検索が無料枠で使えない・検索の上限など）、検索なしで1回だけ呼ぶ。
+        // 同じ呼び出しを繰り返すのではなく、別の呼び出しを1回だけ試す。それも 429 なら止める。
+        searchFailure = `search:${r.status}:${errorHint(r.body)}`;
         const again = await consume();
         if (again) return again;
       }
@@ -406,7 +405,10 @@ async function handle(req: Request): Promise<Response> {
         contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, false) }] }],
         generationConfig: { responseMimeType: 'application/json', responseSchema: LOOKUP_SCHEMA, temperature: 0.2 },
       });
-      if (r.status !== 200) return errorOf(r.status, r.status === 429 ? `gemini_429:${quotaName(r.body) ?? 'unknown'}` : undefined);
+      if (r.status !== 200) {
+        const detail = `${searchFailure ? `${searchFailure} / ` : ''}nosearch:${r.status}:${errorHint(r.body)}`;
+        return r.status === 429 ? fail(200, 'rate_limited', detail) : fail(200, 'failed', detail);
+      }
       const draft = validateLookup(extractJson(r.body));
       return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false }) : fail(200, 'failed', 'unreadable');
     }
@@ -416,7 +418,7 @@ async function handle(req: Request): Promise<Response> {
       contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: PROMPTS[m] }] }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMAS[m], temperature: 0.2 },
     });
-    if (r.status !== 200) return errorOf(r.status, r.status === 429 ? `gemini_429:${quotaName(r.body) ?? 'unknown'}` : undefined);
+    if (r.status !== 200) return errorOf(r.status, `gemini_${r.status}:${errorHint(r.body)}`);
     const draft = validateDraft(m, extractJson(r.body));
     return draft ? json(200, { ok: true, mode, draft }) : fail(200, 'failed', 'unreadable');
   } catch (e) {
