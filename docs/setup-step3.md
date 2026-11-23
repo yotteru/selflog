@@ -8,7 +8,7 @@
 - リポジトリには秘密の値（APIキー、サービスキー、ウィジェット用トークン）を入れていない。どれも Supabase の設定か端末の中にだけある。
 - PWA が使う Supabase の URL と公開用のキーは、どこに置いても配信するJSに入る（ブラウザに渡すための値）。
 - データを守っているのは RLS と利用者リスト（`zanryo_private.members`）。仕組みが見えても、登録した本人以外は読めない。
-- 注意：最初のコミット（Initial commit）の作者欄に、GitHub のメールアドレスが残っている。気になるなら GitHub の **Settings → Emails** で「Keep my email addresses private」をオンにする（今後のコミット用）。
+- **公開にする前に必ず**：最初のコミット（Initial commit）の作者欄に個人のメールアドレスが入っているので、履歴を書き換えて GitHub の noreply アドレスにする（[docs/github-email-privacy.md](github-email-privacy.md)）。これが済むまで公開にしない。
 
 ## 1. SQL を1つ追加で流す
 
