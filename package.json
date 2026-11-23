@@ -6,7 +6,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "widget:check": "node widget/test/scriptable-stub.mjs"
   },
   "repository": {
     "type": "git",

@@ -21,12 +21,13 @@ const KC_TOKEN = 'zanryo.token';
 const CACHE_FILE = 'zanryo-cache.json';
 const REFRESH_MIN = 15;
 
+// ホーム画面用（PWAと同じ配色）。ロック画面は iOS が単色で描くので白だけを使う
 const COLOR = {
   accent: new Color('#1D4ED8'),
   over: new Color('#C2410C'),
-  text: Color.dynamic(new Color('#111827'), new Color('#F9FAFB')),
-  sub: Color.dynamic(new Color('#6B7280'), new Color('#9CA3AF')),
-  bg: Color.dynamic(new Color('#FFFFFF'), new Color('#111827')),
+  text: new Color('#111111'),
+  sub: new Color('#5F5F5A'),
+  bg: new Color('#FFFFFF'),
 };
 
 // ---------------------------------------------------------------------------
@@ -94,9 +95,13 @@ function num(n) {
   return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+function isMoney(item) {
+  return item.key === 'money' || item.unit === '円';
+}
+
 /** 値と単位。お金は ¥ を前に付ける */
 function amount(item, n) {
-  if (item.key === 'money' || item.unit === '円') return `¥${num(n)}`;
+  if (isMoney(item)) return `¥${num(n)}`;
   return `${num(n)}${item.unit || ''}`;
 }
 
@@ -105,20 +110,20 @@ function visible(item) {
   return !(item.kind === 'reach' && item.state === 'done');
 }
 
-/** 「残り 1,340kcal」「超過 120g」「あと 52g」「達成 ✓」 */
-function statusText(item, { withUnit = true } = {}) {
-  const v = withUnit ? amount(item, item.remaining) : num(item.remaining);
-  if (item.kind === 'reach') return item.state === 'done' ? '達成 ✓' : `あと ${v}`;
-  return item.state === 'over' ? `超過 ${v}` : `残り ${v}`;
+/** 状態の言葉：残り／超過／あと／達成 */
+function stateWord(item) {
+  if (item.kind === 'reach') return item.state === 'done' ? '達成' : 'あと';
+  return item.state === 'over' ? '超過' : '残り';
 }
 
-/** 短い形（横長ウィジェット用）: 「1,340kcal」「超過120kcal」 */
-function shortText(item) {
-  if (item.kind === 'reach') return item.state === 'done' ? '達成' : `あと${amount(item, item.remaining)}`;
-  return item.state === 'over' ? `超過${amount(item, item.remaining)}` : amount(item, item.remaining);
+/** 「残り 1,340kcal」「超過 ¥180」「あと 72g」「達成 ✓」 */
+function statusText(item) {
+  if (item.kind === 'reach' && item.state === 'done') return '達成 ✓';
+  return `${stateWord(item)} ${amount(item, item.remaining)}`;
 }
 
 const SHORT_NAME = { kcal: 'kcal', p: 'P', f: 'F', c: 'C', money: 'お金' };
+const LONG_NAME = { kcal: 'カロリー', p: 'タンパク質', f: '脂質', c: '炭水化物', money: '使えるお金' };
 
 function find(data, key) {
   return (data.items || []).find((i) => i.key === key);
@@ -138,31 +143,45 @@ function staleNote(res) {
   return null;
 }
 
+/** 残りの割合（0〜1）。表は減る：リング・棒は残りの量を表す */
+function remainingFrac(item) {
+  const goal = Number(item.goal) || 0;
+  return goal > 0 ? Math.max(0, Math.min(1, Number(item.remaining) / goal)) : 0;
+}
+
 // ---------------------------------------------------------------------------
-// 描画
+// ロック画面：円形（モック Widgets の円形）
+// 細いリング＋上に小さな見出し、中央に値。ロック画面は単色で描かれるので白だけで描く。
 // ---------------------------------------------------------------------------
 
-/** 円形（accessoryCircular）: リングと中央の文字を1枚の画像に描く */
-function ringImage(item, note) {
-  const S = 120;
+/** 円形の中の2行：[見出し, 値] */
+function circularLines(item) {
+  const name = SHORT_NAME[item.key] || item.name;
+  if (item.kind === 'reach') {
+    if (item.state === 'done') return [`${name} 達成`, '✓'];
+    return [`${name} あと`, `${num(item.remaining)}${item.unit || ''}`];
+  }
+  if (isMoney(item)) return [stateWord(item), `¥${num(item.remaining)}`];
+  if (item.key === 'kcal') return [item.state === 'over' ? 'kcal超過' : 'kcal', num(item.remaining)];
+  return [`${name} ${stateWord(item)}`, `${num(item.remaining)}${item.unit || ''}`];
+}
+
+function ringImage(item, stale) {
+  const S = 76; // ロック画面の円形ウィジェットのおおよその大きさ（pt）
   const ctx = new DrawContext();
   ctx.size = new Size(S, S);
   ctx.opaque = false;
   ctx.respectScreenScale = true;
 
-  const lw = 10;
-  const r = S / 2 - lw / 2 - 1;
+  const lw = 5;
+  const r = S / 2 - lw / 2 - 4;
   const c = S / 2;
 
-  const goal = Number(item.goal) || 0;
-  const remaining = Number(item.remaining) || 0;
-  const frac = goal > 0 ? Math.max(0, Math.min(1, remaining / goal)) : 0;
-
-  const arc = (from, to, color) => {
-    const steps = Math.max(2, Math.ceil(90 * (to - from)));
+  const arc = (to, color) => {
+    const steps = Math.max(2, Math.ceil(120 * to));
     const pts = [];
     for (let i = 0; i <= steps; i++) {
-      const a = -Math.PI / 2 + 2 * Math.PI * (from + ((to - from) * i) / steps);
+      const a = -Math.PI / 2 + 2 * Math.PI * (to * i) / steps;
       pts.push(new Point(c + r * Math.cos(a), c + r * Math.sin(a)));
     }
     const path = new Path();
@@ -172,75 +191,91 @@ function ringImage(item, note) {
     ctx.setLineWidth(lw);
     ctx.strokePath();
   };
+  arc(1, new Color('#FFFFFF', 0.25));
+  const frac = remainingFrac(item);
+  if (frac > 0.005) arc(frac, Color.white());
 
-  arc(0, 1, new Color('#FFFFFF', 0.25));
-  if (frac > 0) arc(0, frac, Color.white());
-
-  const label = item.state === 'over' ? '超過' : item.kind === 'reach' ? (item.state === 'done' ? '達成' : 'あと') : '残り';
-  const main = item.kind === 'reach' && item.state === 'done' ? '✓' : num(remaining);
-  const unit = item.key === 'money' ? '¥' : SHORT_NAME[item.key] || item.name;
-
+  const [label, value] = circularLines(item);
   ctx.setTextAlignedCenter();
+  ctx.setTextColor(new Color('#FFFFFF', 0.85));
+  ctx.setFont(Font.mediumSystemFont(10));
+  ctx.drawTextInRect(stale ? `${label}*` : label, new Rect(8, 22, S - 16, 13));
   ctx.setTextColor(Color.white());
-  ctx.setFont(Font.semiboldSystemFont(15));
-  ctx.drawTextInRect(label, new Rect(0, 26, S, 18));
-  ctx.setFont(Font.boldRoundedSystemFont(main.length > 4 ? 24 : 30));
-  ctx.drawTextInRect(main, new Rect(4, 44, S - 8, 34));
-  ctx.setFont(Font.mediumSystemFont(note ? 12 : 15));
-  ctx.drawTextInRect(note ? '古い値' : unit, new Rect(0, 80, S, 18));
+  ctx.setFont(Font.boldRoundedSystemFont(value.length <= 4 ? 17 : value.length <= 5 ? 15 : 13));
+  ctx.drawTextInRect(value, new Rect(6, 35, S - 12, 21));
   return ctx.getImage();
 }
 
 function circularWidget(res) {
   const w = new ListWidget();
   w.addAccessoryWidgetBackground = true;
+  w.setPadding(0, 0, 0, 0);
   const key = (args.widgetParameter || 'kcal').trim();
   const item = res.data && (find(res.data, key) || res.data.items[0]);
   if (!item) {
     const t = w.addText('—');
+    t.font = Font.boldRoundedSystemFont(16);
     t.centerAlignText();
     return w;
   }
-  const img = w.addImage(ringImage(item, staleNote(res)));
+  const img = w.addImage(ringImage(item, !!staleNote(res)));
+  img.imageSize = new Size(76, 76);
   img.centerAlignImage();
   return w;
 }
 
+// ---------------------------------------------------------------------------
+// ロック画面：横長（モック Widgets の横長）
+//   今日の残り                ← 小さな見出し（古い値のときは「12:30時点」）
+//   1,340kcal · ¥420           ← 太字
+//   P あと72g   F 残り18g   C 残り120g
+// ---------------------------------------------------------------------------
+
+function rectHeadline(item) {
+  if (!item) return null;
+  const v = amount(item, item.remaining);
+  return item.state === 'over' ? `超過${v}` : v;
+}
+
 function rectangularWidget(res) {
   const w = new ListWidget();
+  w.setPadding(0, 0, 0, 0);
   if (!res.data) {
-    w.addText('残量').font = Font.boldSystemFont(13);
-    const t = w.addText(res.error || '取得できません');
-    t.font = Font.systemFont(11);
+    const a = w.addText('今日の残り');
+    a.font = Font.mediumSystemFont(11);
+    a.textOpacity = 0.8;
+    const b = w.addText(res.error || '取得できません');
+    b.font = Font.semiboldSystemFont(13);
+    b.minimumScaleFactor = 0.6;
     return w;
   }
   const d = res.data;
-  const kcal = find(d, 'kcal');
-  const money = find(d, 'money');
-
-  const head = [kcal, money].filter(Boolean).map(shortText).join(' · ');
-  const t1 = w.addText(`今日の残り ${head}`);
-  t1.font = Font.semiboldSystemFont(14);
-  t1.minimumScaleFactor = 0.6;
-  t1.lineLimit = 1;
-
-  const pfc = ['p', 'f', 'c']
-    .map((k) => find(d, k))
-    .filter((i) => i && visible(i))
-    .map((i) => `${SHORT_NAME[i.key]} ${shortText(i)}`)
-    .join('  ');
-  if (pfc) {
-    const t2 = w.addText(pfc);
-    t2.font = Font.systemFont(12);
-    t2.minimumScaleFactor = 0.6;
-    t2.lineLimit = 1;
-  }
-
   const note = staleNote(res);
-  if (note) {
-    const t3 = w.addText(note);
-    t3.font = Font.systemFont(10);
-    t3.textOpacity = 0.7;
+
+  const cap = w.addText(note || '今日の残り');
+  cap.font = Font.mediumSystemFont(11);
+  cap.textOpacity = 0.8;
+  cap.lineLimit = 1;
+
+  const head = [rectHeadline(find(d, 'kcal')), rectHeadline(find(d, 'money'))].filter(Boolean).join(' · ');
+  const main = w.addText(head);
+  main.font = Font.boldRoundedSystemFont(18);
+  main.lineLimit = 1;
+  main.minimumScaleFactor = 0.6;
+
+  const pfc = ['p', 'f', 'c'].map((k) => find(d, k)).filter((i) => i && visible(i));
+  if (pfc.length) {
+    w.addSpacer(1);
+    const row = w.addStack();
+    row.layoutHorizontally();
+    pfc.forEach((i, idx) => {
+      if (idx > 0) row.addSpacer();
+      const t = row.addText(`${SHORT_NAME[i.key]} ${stateWord(i)}${amount(i, i.remaining)}`);
+      t.font = Font.mediumSystemFont(12);
+      t.lineLimit = 1;
+      t.minimumScaleFactor = 0.6;
+    });
+    if (pfc.length < 3) row.addSpacer();
   }
   return w;
 }
@@ -251,59 +286,137 @@ function inlineWidget(res) {
     w.addText('残量: 取得できません');
     return w;
   }
-  const parts = ['kcal', 'money'].map((k) => find(res.data, k)).filter(Boolean).map(shortText);
-  w.addText(`残り ${parts.join(' · ')}`);
+  const head = [rectHeadline(find(res.data, 'kcal')), rectHeadline(find(res.data, 'money'))].filter(Boolean);
+  w.addText(`今日の残り ${head.join(' · ')}`);
   return w;
 }
 
-/** ホーム画面（small / medium / large）。中身は同じ */
-function homeWidget(res) {
+// ---------------------------------------------------------------------------
+// ホーム画面（small / medium）。PWAと同じ配色：白地、アクセント青、超過はオレンジ
+// ---------------------------------------------------------------------------
+
+function addBar(stack, item, width) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(width, 4);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const track = new Path();
+  track.addRoundedRect(new Rect(0, 0, width, 4), 2, 2);
+  ctx.addPath(track);
+  ctx.setFillColor(new Color('#ECECE7'));
+  ctx.fillPath();
+  const f = item.state === 'over' ? 1 : remainingFrac(item);
+  if (f > 0.01) {
+    const p = new Path();
+    p.addRoundedRect(new Rect(0, 0, Math.max(4, width * f), 4), 2, 2);
+    ctx.addPath(p);
+    ctx.setFillColor(item.state === 'over' ? COLOR.over : COLOR.accent);
+    ctx.fillPath();
+  }
+  const img = stack.addImage(ctx.getImage());
+  img.imageSize = new Size(width, 4);
+}
+
+function addRow(parent, item, width) {
+  const box = parent.addStack();
+  box.layoutVertically();
+  const row = box.addStack();
+  row.centerAlignContent();
+  const name = row.addText(item.key === 'kcal' ? 'カロリー' : SHORT_NAME[item.key] || item.name);
+  name.font = Font.mediumSystemFont(11);
+  name.textColor = COLOR.sub;
+  row.addSpacer();
+  const value = row.addText(statusText(item));
+  value.font = Font.semiboldSystemFont(12);
+  value.textColor = item.state === 'over' ? COLOR.over : COLOR.text;
+  value.lineLimit = 1;
+  value.minimumScaleFactor = 0.7;
+  box.addSpacer(3);
+  addBar(box, item, width);
+}
+
+function bigKcal(parent, item) {
+  const cap = parent.addText(item.state === 'over' ? 'カロリー 超過' : 'カロリー 残り');
+  cap.font = Font.mediumSystemFont(11);
+  cap.textColor = item.state === 'over' ? COLOR.over : COLOR.sub;
+  const row = parent.addStack();
+  row.bottomAlignContent();
+  const v = row.addText(num(item.remaining));
+  v.font = Font.boldRoundedSystemFont(30);
+  v.textColor = item.state === 'over' ? COLOR.over : COLOR.text;
+  v.minimumScaleFactor = 0.6;
+  v.lineLimit = 1;
+  row.addSpacer(3);
+  const u = row.addText('kcal');
+  u.font = Font.mediumSystemFont(12);
+  u.textColor = COLOR.sub;
+}
+
+function homeWidget(res, family) {
   const w = new ListWidget();
   w.backgroundColor = COLOR.bg;
-  w.setPadding(12, 14, 12, 14);
-
-  const title = w.addText('今日の残り');
-  title.font = Font.semiboldSystemFont(12);
-  title.textColor = COLOR.sub;
-  w.addSpacer(4);
+  w.setPadding(14, 14, 12, 14);
 
   if (!res.data) {
-    const t = w.addText(res.error || '取得できません');
-    t.font = Font.systemFont(12);
-    t.textColor = COLOR.text;
+    const t = w.addText('今日の残り');
+    t.font = Font.semiboldSystemFont(12);
+    t.textColor = COLOR.sub;
+    w.addSpacer(6);
+    const e = w.addText(res.error || '取得できません');
+    e.font = Font.systemFont(12);
+    e.textColor = COLOR.text;
     w.addSpacer();
     return w;
   }
 
-  const big = config.widgetFamily !== 'small';
-  for (const item of res.data.items.filter(visible)) {
-    const row = w.addStack();
-    row.centerAlignContent();
-    const name = row.addText(item.key === 'kcal' ? 'カロリー' : SHORT_NAME[item.key] || item.name);
-    name.font = Font.systemFont(big ? 13 : 12);
-    name.textColor = COLOR.sub;
-    name.lineLimit = 1;
-    row.addSpacer();
-    const value = row.addText(statusText(item));
-    value.font = Font.semiboldRoundedSystemFont(big ? 15 : 13);
-    value.textColor = item.state === 'over' ? COLOR.over : COLOR.text;
-    value.lineLimit = 1;
-    value.minimumScaleFactor = 0.7;
-    w.addSpacer(2);
+  const d = res.data;
+  const kcal = find(d, 'kcal');
+  const rest = d.items.filter((i) => i.key !== 'kcal' && visible(i));
+  const medium = family !== 'small';
+  const note = staleNote(res);
+
+  if (medium) {
+    const cols = w.addStack();
+    const left = cols.addStack();
+    left.layoutVertically();
+    left.size = new Size(120, 0);
+    if (kcal) bigKcal(left, kcal);
+    left.addSpacer();
+    if (d.month_saving != null) {
+      const s = Number(d.month_saving);
+      const a = left.addText('今月の節約（見込み）');
+      a.font = Font.mediumSystemFont(10);
+      a.textColor = COLOR.sub;
+      const b = left.addText(`${s < 0 ? '−' : ''}¥${num(s)}`);
+      b.font = Font.boldRoundedSystemFont(15);
+      b.textColor = s < 0 ? COLOR.over : COLOR.accent;
+    }
+    const n = left.addText(note || `${timeLabel(res.fetchedAt)} 更新`);
+    n.font = Font.systemFont(9);
+    n.textColor = COLOR.sub;
+    cols.addSpacer(14);
+    const right = cols.addStack();
+    right.layoutVertically();
+    rest.forEach((i, idx) => {
+      if (idx > 0) right.addSpacer(6);
+      addRow(right, i, 170);
+    });
+    right.addSpacer();
+    return w;
   }
 
+  if (kcal) bigKcal(w, kcal);
+  w.addSpacer(6);
+  rest.slice(0, 4).forEach((i, idx) => {
+    if (idx > 0) w.addSpacer(4);
+    addRow(w, i, 128);
+  });
   w.addSpacer();
-  const footer = [];
-  if (res.data.month_saving != null) {
-    const s = Number(res.data.month_saving);
-    footer.push(`今月の節約 ${s < 0 ? '−' : ''}¥${num(s)}（見込み）`);
+  if (note) {
+    const n = w.addText(note);
+    n.font = Font.systemFont(9);
+    n.textColor = COLOR.sub;
   }
-  const note = staleNote(res);
-  footer.push(note || `${timeLabel(res.fetchedAt)} 更新`);
-  const f = w.addText(footer.join(big ? '  ·  ' : '\n'));
-  f.font = Font.systemFont(10);
-  f.textColor = COLOR.sub;
-  f.minimumScaleFactor = 0.7;
   return w;
 }
 
@@ -320,7 +433,7 @@ function buildWidget(res, family) {
       w = inlineWidget(res);
       break;
     default:
-      w = homeWidget(res);
+      w = homeWidget(res, family);
   }
   w.refreshAfterDate = new Date(Date.now() + REFRESH_MIN * 60 * 1000);
   // タップでPWAを開きたい場合は、ここに w.url = 'https://...' を設定する
