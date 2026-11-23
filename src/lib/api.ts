@@ -81,6 +81,29 @@ export async function sendOp(op: Op): Promise<SendResult> {
   return { error: friendly(r.error.message) };
 }
 
+export type EstimateMode = 'photo' | 'label' | 'receipt';
+export type EstimateResult =
+  | { ok: true; mode: 'photo'; draft: { name: string; kcal: number; p: number; f: number; c: number; confidence: 'low' | 'mid' | 'high' } }
+  | { ok: true; mode: 'label'; draft: { basis: 'per100g' | 'per_unit'; unit_label: string; unit_grams: number | null; kcal: number; p: number; f: number; c: number } }
+  | { ok: true; mode: 'receipt'; draft: { store: string; total: number; items: { name: string; price: number }[] } }
+  | { ok: false; reason: 'not_member' | 'bad_request' | 'daily_limit' | 'rate_limited' | 'failed' | 'offline' };
+
+/** 写真から下書きを作る（Edge Function zanryo-estimate-nutrition）。失敗しても例外にせず、理由を返す */
+export async function estimate(mode: EstimateMode, image: string): Promise<EstimateResult> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { ok: false, reason: 'offline' };
+  const { data, error } = await supabase.functions.invoke('zanryo-estimate-nutrition', { body: { mode, image } });
+  if (data && typeof data === 'object' && 'ok' in data) return data as EstimateResult;
+  if (error) {
+    try {
+      const body = await (error as { context?: Response }).context?.json();
+      if (body && typeof body === 'object' && 'ok' in body) return body as EstimateResult;
+    } catch {
+      /* noop */
+    }
+  }
+  return { ok: false, reason: 'failed' };
+}
+
 export async function updateEntry(id: string, label: string, values: Amounts): Promise<void> {
   check(await supabase.rpc('update_entry', { p_id: id, p_values: values, p_label: label }));
 }

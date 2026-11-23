@@ -30,7 +30,7 @@ export interface Preset {
 export interface Entry {
   id: string;
   label: string;
-  source: 'preset' | 'photo' | 'label' | 'manual';
+  source: 'preset' | 'photo' | 'label' | 'receipt' | 'manual';
   recorded_at: string;
   preset_id: string | null;
   values: Amounts;

@@ -7,3 +7,7 @@
 [functions.zanryo-widget-summary]
 # Bearer に入るのはウィジェット用トークン（JWTではない）。照合は関数の中で行う。
 verify_jwt = false
+
+[functions.zanryo-estimate-nutrition]
+# ログインした利用者だけが呼べる（JWT を検証する。既定のまま）。中で利用者リストも確かめる。
+verify_jwt = true

@@ -11,6 +11,7 @@ import { EntryList } from '../components/EntryList';
 import { PasswordSheet } from '../components/PasswordSheet';
 import { PresetGrid, PresetSheet } from '../components/Presets';
 import { Toast, type ToastState } from '../components/Toast';
+import { Capture, type CaptureResult } from './Capture';
 
 const uuid = () => crypto.randomUUID();
 
@@ -21,6 +22,7 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState<View>('front');
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const [sheet, setSheet] = useState<null | { kind: 'presets' } | { kind: 'add' } | { kind: 'password' } | { kind: 'edit'; entry: Entry }>(null);
 
   const showToast = useCallback((message: string, onUndo?: () => void) => setToast({ message, onUndo, key: Date.now() }), []);
@@ -108,6 +110,15 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
     if (presetId) void refresh();
   }
 
+  async function submitCapture(r: CaptureResult) {
+    let presetId: string | null = null;
+    if (r.saveAsPreset) {
+      presetId = await createPreset(r.label, r.values, (data?.presets.length ?? 0) + 1);
+    }
+    record(r.label, r.values, r.source, presetId);
+    if (presetId) void refresh();
+  }
+
   async function submitEdit(entry: Entry, r: EntryFormResult) {
     if (!navigator.onLine) throw new Error('オフラインのあいだは直せません');
     await updateEntry(entry.id, r.label, r.values);
@@ -123,6 +134,10 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
   }
 
   const unsent = ops.filter((o) => !o.sent).length;
+
+  if (capturing) {
+    return <Capture day={day} isToday items={items} onRecord={submitCapture} onClose={() => setCapturing(false)} />;
+  }
 
   return (
     <main className="screen">
@@ -154,13 +169,18 @@ export function Today({ onSignOut }: { onSignOut: () => void }) {
 
           <PresetGrid presets={data?.presets ?? []} items={items} onPick={pickPreset} onShowAll={() => setSheet({ kind: 'presets' })} />
 
-          <button type="button" className="primary" onClick={() => setSheet({ kind: 'add' })}>
+          <button type="button" className="primary" onClick={() => setCapturing(true)}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
+              <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+              <circle cx="12" cy="13" r="3.5" />
             </svg>
-            手入力で記録
+            撮影して記録
           </button>
-          <div className="notice">「撮影して記録」はステップ4で追加します</div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'add' })}>
+              手入力で記録
+            </button>
+          </div>
 
           <EntryList entries={shown.entries} items={items} onEdit={(entry) => setSheet({ kind: 'edit', entry })} />
 

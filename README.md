@@ -11,12 +11,14 @@
 |---|---|
 | `supabase/sql/` | DBに流すSQL（番号順に SQL Editor で実行。[一覧](supabase/sql/README.md)） |
 | `supabase/functions/zanryo-widget-summary/` | ウィジェット用 Edge Function |
+| `supabase/functions/zanryo-estimate-nutrition/` | 写真（料理・成分表示・レシート）を Gemini で読み取る Edge Function |
 | `supabase/tests/` | SQLのテスト（PGlite上で `supabase/sql/` を流して確かめる） |
 | `src/` | PWA（Vite + React + TypeScript）。`src/lib/` に日付・表示ルール・送信キューなど |
 | `src/lib/dayKey.ts` | 1日の区切り（朝4:00 JST）のユーティリティ |
 | `widget/zanryo.js` | Scriptable用ウィジェットスクリプト |
 | `docs/setup-step1-2.md` | ステップ1〜2のセットアップと動作確認の手順 |
 | `docs/setup-step3.md` | ステップ3（PWA を GitHub Pages に置く）と動作確認の手順 |
+| `docs/setup-step4.md` | ステップ4（撮影して記録・Gemini）と動作確認の手順 |
 
 ## テスト
 
@@ -41,14 +43,17 @@ Supabaseに接続せずに、shiori との分離（public に何も作らない�
 - [x] 1. スキーマ、RLS、day_key のユーティリティとテスト
 - [x] 2. `zanryo-widget-summary` と Scriptable スクリプト（実機でロック画面に出ることを確認済み。見た目を作り直し中）
 - [x] 3. PWA 5.1（プリセット記録まで）（**実機確認待ち**）
-- [ ] 4. `estimate-nutrition` と 5.2
-  - 1日の呼び出し回数のカウンター（`try_consume_gemini_call`）は先に入れてある
-  - 実装するときにやること（仕様 §6 の更新分）：
-    - 無料枠で画像入力が使えるFlash系のモデルを選び、その無料枠の上限（RPM / RPD）を公式ドキュメントで確認して、この README に書く
-    - APIキーは、Cloud Billing を有効にしていないプロジェクトで AI Studio から発行する
-    - 429 のときはリトライせず、「今は推定できません」と出して手入力に切り替える
-    - 関数名は `zanryo-estimate-nutrition`、シークレットは `ZANRYO_GEMINI_API_KEY` / `ZANRYO_GEMINI_MODEL` / `ZANRYO_GEMINI_DAILY_LIMIT`
-    - 1日の上限は環境変数にする（初期値は無料枠より十分少なくする）
-    - 送る前に中心部分を切り抜けるようにし、縮小するときに EXIF（位置情報など）を取り除く
+- [x] 4. `zanryo-estimate-nutrition` と 5.2（レシートの読み取りも追加）（**実機確認待ち**）
+
+## Gemini の無料枠
+
+- モデルは `gemini-flash-lite-latest`（Flash 系でいちばん軽いもの）。Edge Function のシークレット `ZANRYO_GEMINI_MODEL` で変えられる。
+- 無料枠の上限（RPM・RPD）は、**公式の値をまだ確かめられていない**（作業環境から Google の公式ドキュメントにつながらなかった）。
+  AI Studio の Rate limits の画面で確かめて、ここに書く：
+  - `gemini-flash-lite-latest`：RPM ＿＿ / RPD ＿＿（確認日 ＿＿）
+- 参考（非公式・フォーラムの書き込み。2026年時点で Flash は 20 RPD、Flash-Lite は 500 RPD に減ったという報告がある）
+- アプリ側の1日の上限 `ZANRYO_GEMINI_DAILY_LIMIT` は初期値 15。無料枠の RPD より十分少なくする。
+- 1日の区切りは太平洋時間の0時（無料枠のリセットに合わせる）。
+
 - [ ] 5. 5.3（過去の日・記録漏れのバナー）
 - [ ] 6. 5.4（設定）と仕上げ
