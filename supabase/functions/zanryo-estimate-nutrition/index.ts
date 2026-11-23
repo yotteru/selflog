@@ -19,6 +19,8 @@
 //   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 100（無料枠の1日の上限 500 より十分少なく）
 //   ZANRYO_ALLOWED_ORIGINS     … 省略時 https://yotteru.github.io,http://localhost:5173
 //   ZANRYO_GEMINI_SEARCH       … 省略時 on。off にすると「名前で調べる」で Google 検索を使わない
+//   ZANRYO_GEMINI_LOOKUP_MODEL … 「名前で調べる」の検索つきの呼び出しに使うモデル。省略時 gemini-2.5-flash-lite
+//                                （無料枠の検索は Gemini 2 / 2.5 だけ 1日1,500回。Gemini 3 以降は0回。2026-11-23 に AI Studio で確認）
 //
 // 名前で調べる：まず Google 検索つきで呼ぶ。検索が使えない（無料枠の対象外など）と断られたら、
 // 検索なし（Gemini の知識だけ）で1回だけ呼び直す。429（レート上限）は呼び直さない。
@@ -355,11 +357,12 @@ async function handle(req: Request): Promise<Response> {
   const key = env('ZANRYO_GEMINI_API_KEY');
   if (!key) return fail(500, 'failed', 'no_api_key');
   const model = env('ZANRYO_GEMINI_MODEL') ?? 'gemini-flash-lite-latest';
-  const call = async (payload: unknown) => {
+  const lookupModel = env('ZANRYO_GEMINI_LOOKUP_MODEL') ?? 'gemini-2.5-flash-lite';
+  const call = async (payload: unknown, useModel = model) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 30_000);
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(useModel)}:generateContent`, {
         method: 'POST',
         signal: ctrl.signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -385,11 +388,15 @@ async function handle(req: Request): Promise<Response> {
       const useSearch = env('ZANRYO_GEMINI_SEARCH') !== 'off';
       let searchFailure = '';
       if (useSearch) {
-        const r = await call({
-          contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, true) }] }],
-          tools: [{ google_search: {} }],
-          generationConfig: { temperature: 0.2 },
-        });
+        // 検索つきは、無料枠で検索が使える世代のモデルで呼ぶ
+        const r = await call(
+          {
+            contents: [{ role: 'user', parts: [{ text: lookupPrompt(query!, true) }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { temperature: 0.2 },
+          },
+          lookupModel,
+        );
         if (r.status === 200) {
           const draft = validateLookup(extractJsonLoose(r.body));
           if (draft) return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true });
