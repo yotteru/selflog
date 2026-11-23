@@ -71,7 +71,7 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
   const firstDow = (new Date(`${range.from}T00:00:00Z`).getUTCDay() + 6) % 7;
 
   return (
-    <div className="period-screen swipe-area" {...swipe}>
+    <div className="period-screen swipe-area" ref={swipe.ref} {...swipe.handlers}>
       <header className="day-header">
         <h1>期間</h1>
         <div className="seg" role="group" aria-label="期間の単位">

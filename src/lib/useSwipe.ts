@@ -1,6 +1,6 @@
 // 左右のスワイプで前後に移動する（ホーム・記録一覧・期間）。
 // 縦のスクロールとぶつからないよう、最初に動いた向きで「横」か「縦」かを決め、縦ならスワイプとして扱わない。
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 
 const LOCK = 10; // これだけ動いたら向きを決める（px）
 const TRIGGER = 60; // これだけ横に動いたら移動する（px）
@@ -18,6 +18,10 @@ export function swipeResult(dx: number, canPrev: boolean, canNext: boolean): 'pr
   return null;
 }
 
+/**
+ * スワイプで前後に移動する。指の動きは React の描き直しをせず、要素の transform を直接動かす（iPhone でカクつかないように）。
+ * 使い方：<div ref={swipe.ref} {...swipe.handlers}>
+ */
 export function useSwipe({
   onPrev,
   onNext,
@@ -29,21 +33,31 @@ export function useSwipe({
   canPrev?: boolean;
   canNext?: boolean;
 }) {
+  const el = useRef<HTMLDivElement | null>(null);
   const start = useRef<{ x: number; y: number; id: number; axis: 'h' | 'v' | null } | null>(null);
   const swiped = useRef(false);
-  const [offset, setOffset] = useState(0);
+  const latest = useRef({ onPrev, onNext, canPrev, canNext });
+  latest.current = { onPrev, onNext, canPrev, canNext };
 
-  const reset = () => {
-    start.current = null;
-    setOffset(0);
+  const move = (x: number, animate: boolean, opacity = '') => {
+    const node = el.current;
+    if (!node) return;
+    node.style.transition = animate ? 'transform 0.16s ease, opacity 0.16s ease' : 'none';
+    node.style.transform = x ? `translate3d(${x}px, 0, 0)` : '';
+    node.style.opacity = opacity;
   };
 
-  return {
-    style: {
-      transform: offset ? `translateX(${offset}px)` : undefined,
-      transition: offset ? 'none' : 'transform 0.2s ease',
-      touchAction: 'pan-y' as const,
-    },
+  /** 画面を横にすべらせて切り替える（dir: -1 = 左へ＝次、1 = 右へ＝前） */
+  const slide = (dir: -1 | 1, go: () => void) => {
+    move(dir * 70, true, '0');
+    window.setTimeout(() => {
+      go();
+      move(-dir * 70, false, '0');
+      requestAnimationFrame(() => requestAnimationFrame(() => move(0, true, '')));
+    }, 140);
+  };
+
+  const handlers = {
     onPointerDown(e: React.PointerEvent) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       swiped.current = false;
@@ -55,21 +69,27 @@ export function useSwipe({
       const dx = e.clientX - s.x;
       if (!s.axis) s.axis = swipeAxis(dx, e.clientY - s.y);
       if (s.axis !== 'h') return;
+      const { canPrev: cp, canNext: cn } = latest.current;
       // 端（今日より先・これ以上前がない）では少しだけ動いて戻る
-      const blocked = (dx < 0 && !canNext) || (dx > 0 && !canPrev);
-      setOffset(dx * (blocked ? 0.1 : 0.35));
+      const blocked = (dx < 0 && !cn) || (dx > 0 && !cp);
+      move(dx * (blocked ? 0.12 : 0.5), false);
     },
     onPointerUp(e: React.PointerEvent) {
       const s = start.current;
-      if (s && e.pointerId === s.id && s.axis === 'h') {
-        const r = swipeResult(e.clientX - s.x, canPrev, canNext);
-        swiped.current = Math.abs(e.clientX - s.x) > LOCK;
-        if (r === 'next') onNext();
-        if (r === 'prev') onPrev();
-      }
-      reset();
+      start.current = null;
+      if (!s || e.pointerId !== s.id || s.axis !== 'h') return;
+      const dx = e.clientX - s.x;
+      const { onPrev: prev, onNext: next, canPrev: cp, canNext: cn } = latest.current;
+      swiped.current = Math.abs(dx) > LOCK;
+      const r = swipeResult(dx, cp, cn);
+      if (r === 'next') slide(-1, next);
+      else if (r === 'prev') slide(1, prev);
+      else move(0, true);
     },
-    onPointerCancel: reset,
+    onPointerCancel() {
+      start.current = null;
+      move(0, true);
+    },
     // スワイプした指を離したときに、下にあるボタンが押されないようにする
     onClickCapture(e: React.MouseEvent) {
       if (swiped.current) {
@@ -79,4 +99,6 @@ export function useSwipe({
       }
     },
   };
+
+  return { ref: el, handlers };
 }

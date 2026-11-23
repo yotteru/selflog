@@ -25,6 +25,7 @@ export function EntriesScreen({
   isToday,
   items,
   loading,
+  stale = false,
   loadError,
   unsent,
   onGo,
@@ -41,6 +42,8 @@ export function EntriesScreen({
   isToday: boolean;
   items: SummaryItem[];
   loading: boolean;
+  /** 選んだ日を読み込み中で、前の日の表示を薄く出している */
+  stale?: boolean;
   loadError: string;
   unsent: number;
   onGo: (d: string) => void;
@@ -62,12 +65,12 @@ export function EntriesScreen({
   const kcal = items.find((i) => i.key === 'kcal');
   const money = items.find((i) => i.key === 'money');
   return (
-    <div className="entries-screen swipe-area" {...swipe}>
+    <div className="entries-screen swipe-area" ref={swipe.ref} {...swipe.handlers}>
       <DayHeader day={day} today={today} title={isToday ? '今日の記録' : `${formatDayLabel(day)}の記録`} onGo={onGo} />
       {loadError && <div className="banner compact" role="status">{loadError}</div>}
       {unsent > 0 && <div className="notice">未送信の記録が {unsent} 件（つながったら送ります）</div>}
 
-      <div className="stat-row">
+      <div className={`stat-row ${stale ? 'stale' : ''}`}>
         <div className="stat">
           <span>摂取</span>
           <strong>
@@ -105,7 +108,7 @@ export function EntriesScreen({
         </div>
       )}
 
-      <section className="card entry-list" aria-label="記録一覧">
+      <section className={`card entry-list ${stale ? 'stale' : ''}`} aria-label="記録一覧" aria-busy={stale}>
         {loading ? (
           <div className="notice">読み込み中…</div>
         ) : entries.length === 0 ? (

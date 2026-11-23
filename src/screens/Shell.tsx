@@ -10,7 +10,7 @@ import {
   type DayData,
   type EstimateMode,
 } from '../lib/api';
-import { formatDayLabel, todayKey } from '../lib/dayKey';
+import { addDays, formatDayLabel, todayKey } from '../lib/dayKey';
 import { clampDay, daysWithQueuedAdds, missingBannerText } from '../lib/days';
 import { overlay } from '../lib/overlay';
 import { queue } from '../lib/queueInstance';
@@ -88,6 +88,9 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
       saveCache(fresh);
       setLoadError('');
       queue.purgeSent(before);
+      // 前の日を先に読んでおく（スワイプしたときにすぐ出るように）
+      const prev = addDays(d, -1);
+      if (!loadCache(prev)) void fetchDay(prev).then(saveCache).catch(() => {});
     } catch (e) {
       if (seq !== loading.current) return;
       setLoadError(navigator.onLine ? (e as Error).message : 'オフラインです。記録は端末に保存し、つながったら送ります。');
@@ -126,7 +129,9 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
     setSheet(null);
     dayRef.current = next;
     setDay(next);
-    setData(loadCache(next));
+    // 読み込むあいだは、前の日の表示を薄く残す（「読み込み中」で画面が跳ねないように）
+    const cached = loadCache(next);
+    if (cached) setData(cached);
     setLoadError('');
     void refresh(next);
   }
@@ -139,7 +144,10 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   }
 
   const current = data && data.day === day ? data : null;
-  const shown = useMemo(() => (current ? overlay(day, current.summary, current.entries, ops) : null), [current, day, ops]);
+  // 選んだ日のデータがまだ無いあいだは、前に出していた日のデータを薄く出す（stale）
+  const stale = !current && !!data;
+  const view = current ?? data;
+  const shown = useMemo(() => (view ? overlay(view.day, view.summary, view.entries, ops) : null), [view, ops]);
   const items = shown?.summary ?? [];
 
   // 記録漏れの日（キューに記録がある日は、もう記録したものとして外す）
@@ -218,7 +226,7 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   }
 
   const unsent = ops.filter((o) => !o.sent).length;
-  const noEntries = shown ? shown.entries.length === 0 : false;
+  const noEntries = shown && !stale ? shown.entries.length === 0 : false;
   const dayLabel = isToday ? '今日' : formatDayLabel(day);
 
   if (capture) {
@@ -240,6 +248,7 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
     isToday,
     items,
     loading: !shown,
+    stale,
     loadError,
     unsent,
     onGo: goTo,

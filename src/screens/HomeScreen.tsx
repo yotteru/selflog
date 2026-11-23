@@ -32,6 +32,7 @@ export function HomeScreen({
   isToday,
   items,
   loading,
+  stale = false,
   loadError,
   unsent,
   onGo,
@@ -48,6 +49,8 @@ export function HomeScreen({
   isToday: boolean;
   items: SummaryItem[];
   loading: boolean;
+  /** 選んだ日を読み込み中で、前の日の表示を薄く出している */
+  stale?: boolean;
   loadError: string;
   unsent: number;
   onGo: (d: string) => void;
@@ -75,7 +78,7 @@ export function HomeScreen({
   const saving = monthSaving == null ? undefined : `今月の節約（見込み）${monthSaving < 0 ? '−' : ''}¥${fmt(monthSaving)}`;
 
   return (
-    <div className="home swipe-area" {...swipe}>
+    <div className="home swipe-area" ref={swipe.ref} {...swipe.handlers}>
       {banner && (
         <button type="button" className="banner banner-button compact" onClick={onBanner}>
           <span>{banner}</span>
@@ -116,14 +119,16 @@ export function HomeScreen({
         <div className="notice">読み込み中…</div>
       ) : (
         <>
-          {ringItem && <RingCard item={ringItem} pace={pace(ringItem)} />}
+          <div className={`day-content ${stale ? 'stale' : ''}`} aria-busy={stale}>
+          {ringItem && <RingCard item={ringItem} pace={stale ? null : pace(ringItem)} />}
           {meters.length > 0 && (
             <section className="card meters" aria-label="ターゲット">
               {meters.map((m) => (
-                <MeterRow key={m.target_id} item={m} pace={pace(m)} extra={m.key === 'money' ? saving : undefined} />
+                <MeterRow key={m.target_id} item={m} pace={stale ? null : pace(m)} extra={m.key === 'money' ? saving : undefined} />
               ))}
             </section>
           )}
+          </div>
         </>
       )}
     </div>
