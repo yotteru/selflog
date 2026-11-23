@@ -16,7 +16,7 @@
 | `src/lib/dayKey.ts` | 1日の区切り（朝4:00 JST）のユーティリティ |
 | `widget/zanryo.js` | Scriptable用ウィジェットスクリプト |
 | `docs/setup-step1-2.md` | ステップ1〜2のセットアップと動作確認の手順 |
-| `docs/setup-step3.md` | ステップ3（PWA を Cloudflare Pages に置く）と動作確認の手順 |
+| `docs/setup-step3.md` | ステップ3（PWA を GitHub Pages に置く）と動作確認の手順 |
 
 ## テスト
 

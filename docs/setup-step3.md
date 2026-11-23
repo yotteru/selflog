@@ -1,7 +1,14 @@
 # ステップ3：PWA（今日の残り・プリセット記録）
 
-スマホで開くアプリ本体を、**Cloudflare Pages**（無料）に置く。
-リポジトリが非公開なので、無料の GitHub Pages は使えないため。
+スマホで開くアプリ本体を **GitHub Pages**（`https://yotteru.github.io/selflog/`）に置く。
+無料の GitHub Pages は公開リポジトリでしか使えないので、このリポジトリを公開にする（shiori と同じ）。
+
+### 公開しても大丈夫な理由
+
+- リポジトリには秘密の値（APIキー、サービスキー、ウィジェット用トークン）を入れていない。どれも Supabase の設定か端末の中にだけある。
+- PWA が使う Supabase の URL と公開用のキーは、どこに置いても配信するJSに入る（ブラウザに渡すための値）。
+- データを守っているのは RLS と利用者リスト（`zanryo_private.members`）。仕組みが見えても、登録した本人以外は読めない。
+- 注意：最初のコミット（Initial commit）の作者欄に、GitHub のメールアドレスが残っている。気になるなら GitHub の **Settings → Emails** で「Keep my email addresses private」をオンにする（今後のコミット用）。
 
 ## 1. SQL を1つ追加で流す
 
@@ -16,37 +23,32 @@ SQL Editor で `supabase/sql/03_presets_ranked.sql` を実行する（プリセ�
 
 この2つはブラウザに渡ってよい値。`service_role` / `secret` のキーは**絶対に使わない**。
 
-## 3. Cloudflare Pages に置く
+## 3. GitHub Pages に置く
 
-1. https://dash.cloudflare.com でアカウントを作る（無料）。
-2. **Workers & Pages → Create → Pages → Connect to Git** で GitHub とつなぎ、`yotteru/selflog` を選ぶ
-   （非公開リポジトリなので、Cloudflare にこのリポジトリへのアクセスを許可する）。
-3. 設定：
+1. リポジトリの **Settings → General → Danger Zone → Change visibility** で **Public** にする。
+2. **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にする。
+3. **Settings → Environments → github-pages → Deployment branches** に `claude/new-session-nx7j7c` を追加する
+   （既定では main からしか置けないため。main にまとめたら不要）。
+4. **Settings → Secrets and variables → Actions → Variables** に2つ追加する（Secrets ではなく Variables でよい。どちらも公開してよい値）：
 
-   | 項目 | 値 |
+   | 名前 | 値 |
    |---|---|
-   | Production branch | `claude/new-session-nx7j7c`（main にまとめたら main に変える） |
-   | Framework preset | なし（None） |
-   | Build command | `npm run build` |
-   | Build output directory | `dist` |
-   | 環境変数 `VITE_SUPABASE_URL` | 手順2の Project URL |
-   | 環境変数 `VITE_SUPABASE_ANON_KEY` | 手順2の公開用のキー |
-   | 環境変数 `NODE_VERSION` | `22` |
+   | `VITE_SUPABASE_URL` | 手順2の Project URL |
+   | `VITE_SUPABASE_ANON_KEY` | 手順2の公開用のキー |
 
-4. **Save and Deploy**。終わると `https://<名前>.pages.dev` のURLが出る。
-
-以後、このブランチに push するたびに自動で置き直される。
+5. **Actions → Deploy PWA to GitHub Pages → Run workflow** で実行する。
+   緑になれば `https://yotteru.github.io/selflog/` で開ける。以後はこのブランチに push するたびに自動で置き直される。
 
 ## 4. ログインの戻り先を Supabase に登録する
 
-**Authentication → URL Configuration → Redirect URLs** に `https://<名前>.pages.dev/**` を**追加**する。
+**Authentication → URL Configuration → Redirect URLs** に `https://yotteru.github.io/selflog/**` を**追加**する。
 
 - **Site URL は変えない**（shiori のもの）。
 - 追加しないと、ログインのメールのリンクが shiori 側に飛ぶ。
 
 ## 5. iPhone に入れる
 
-1. Safari で `https://<名前>.pages.dev` を開く。
+1. Safari で `https://yotteru.github.io/selflog/` を開く。
 2. 共有ボタン →「ホーム画面に追加」。
 3. ホーム画面の「残量」から開き、メールアドレスを入れて「メールを送る」。
 4. 届いたメールで**ログインする**（下の「ログインについて」を参照）。
