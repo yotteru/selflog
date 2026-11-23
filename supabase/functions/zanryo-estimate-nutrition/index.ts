@@ -215,7 +215,8 @@ export function lookupPrompt(query: string, withSearch: boolean): string {
     '・price は日本での税込価格（円・整数）。分からなければ null。\n' +
     '・確かな値なら confidence=high、推定なら mid か low。食べ物として特定できなければ name を空、数値は0、confidence=low。\n' +
     (withSearch
-      ? '・答えは次の形の JSON だけを書く（説明や ``` は書かない）：{"name":"","serving":"","kcal":0,"p":0,"f":0,"c":0,"price":null,"confidence":"low"}'
+      ? '・はじめに、どのページに何と書いてあったかを1〜2文で書く（例: 吉野家の公式サイトの栄養成分表では、牛丼並盛は635kcal。）。' +
+        'そのあとに次の形の JSON を書く（``` は書かない。JSON の後には何も書かない）：{"name":"","serving":"","kcal":0,"p":0,"f":0,"c":0,"price":null,"confidence":"low"}'
       : '')
   );
 }
@@ -275,10 +276,22 @@ export function quotaName(errorBody: unknown): string | null {
   return m[1].split('/').pop()!.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) || null;
 }
 
-/** Gemini が実際に Google 検索をした回数（検索の言葉の数）。0 なら検索せずに答えた */
-export function searchQueryCount(body: unknown): number {
+/** Gemini が実際に Google 検索で使った言葉（3件まで・60文字まで）。空なら検索せずに答えた */
+export function searchQueries(body: unknown): string[] {
   const q = (body as { candidates?: { groundingMetadata?: { webSearchQueries?: unknown[] } }[] })?.candidates?.[0]?.groundingMetadata?.webSearchQueries;
-  return Array.isArray(q) ? q.length : 0;
+  if (!Array.isArray(q)) return [];
+  const out: string[] = [];
+  for (const x of q) {
+    if (typeof x !== 'string') continue;
+    const t = str(x, 60);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+export function searchQueryCount(body: unknown): number {
+  return searchQueries(body).length;
 }
 
 /** 検索で見たページ（出典）。https のものだけ、3件まで */
@@ -410,7 +423,8 @@ async function handle(req: Request): Promise<Response> {
         if (r.status === 200) {
           const draft = validateLookup(extractJsonLoose(r.body));
           if (draft) {
-            return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true, searchQueries: searchQueryCount(r.body), model: lookupModel });
+            const queries = searchQueries(r.body);
+            return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true, searchQueries: queries.length, queries, model: lookupModel });
           }
           return fail(200, 'failed', 'unreadable');
         }

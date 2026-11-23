@@ -140,6 +140,8 @@ export type LookupResult =
       searchError?: string;
       /** Gemini が実際に検索した回数（0 なら検索せずに答えた） */
       searchQueries?: number;
+      /** Gemini が検索に使った言葉（「Google で確かめる」リンクに使う） */
+      queries?: string[];
     }
   | Failure;
 

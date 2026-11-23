@@ -183,7 +183,7 @@ export function EntryForm({
                   ))}
                 </span>
               ) : (found.searchQueries ?? 0) > 0 ? (
-                <span className="hint">Google 検索で調べましたが、出典のページは返ってきませんでした。</span>
+                <span className="hint">Google 検索で調べましたが、どのページに基づく値かは返ってきませんでした。下のリンクで確かめられます。</span>
               ) : (
                 <span className="hint">Gemini が検索せずに答えた値です（出典なし）。</span>
               )
@@ -193,6 +193,17 @@ export function EntryForm({
                 {found.searchError && `（詳細：${found.searchError}）`}
               </span>
             )}
+            <span className="hint">
+              Google で確かめる：
+              {(found.queries && found.queries.length > 0 ? found.queries : [label.trim()]).map((q, i) => (
+                <span key={q}>
+                  {i > 0 && '、'}
+                  <a href={`https://www.google.com/search?q=${encodeURIComponent(q)}`} target="_blank" rel="noopener noreferrer">
+                    {q}
+                  </a>
+                </span>
+              ))}
+            </span>
           </div>
         )}
         <div className="grid-fields">

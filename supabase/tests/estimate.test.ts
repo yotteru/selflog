@@ -56,10 +56,11 @@ describe('名前で調べる', () => {
     expect(normalizeQuery('   ')).toBeNull();
     expect(normalizeQuery(123)).toBeNull();
   });
-  it('指示文に言葉が入り、検索つきは JSON だけを書くよう指示する', () => {
+  it('指示文に言葉が入り、検索つきは根拠の文と JSON を書くよう指示する', () => {
     expect(lookupPrompt('吉野家 牛丼', true)).toContain('「吉野家 牛丼」');
-    expect(lookupPrompt('x', true)).toContain('JSON だけ');
-    expect(lookupPrompt('x', false)).not.toContain('JSON だけ');
+    expect(lookupPrompt('x', true)).toContain('どのページに何と書いてあったか');
+    expect(lookupPrompt('x', true)).toContain('JSON を書く');
+    expect(lookupPrompt('x', false)).not.toContain('JSON を書く');
   });
   it('検証：範囲内なら通す。値段は整数、無ければ null', () => {
     expect(validateLookup({ name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high' })).toEqual({
@@ -88,7 +89,7 @@ describe('名前で調べる', () => {
   });
 });
 
-import { errorHint, quotaName, searchQueryCount } from '../functions/zanryo-estimate-nutrition/index';
+import { errorHint, quotaName, searchQueries, searchQueryCount } from '../functions/zanryo-estimate-nutrition/index';
 
 describe('429 の種類', () => {
   it('当たった上限の名前を取り出す', () => {
@@ -106,5 +107,14 @@ describe('429 の種類', () => {
   it('実際に検索した回数', () => {
     expect(searchQueryCount({ candidates: [{ groundingMetadata: { webSearchQueries: ['吉野家 牛丼 並盛 カロリー'] } }] })).toBe(1);
     expect(searchQueryCount({ candidates: [{}] })).toBe(0);
+  });
+  it('検索に使った言葉：重複なし・3件まで・60文字まで', () => {
+    const body = { candidates: [{ groundingMetadata: { webSearchQueries: ['吉野家 牛丼 カロリー', '吉野家 牛丼 カロリー', 'a'.repeat(100), 'x', 'y', 1] } }] };
+    expect(searchQueries(body)).toEqual(['吉野家 牛丼 カロリー', 'a'.repeat(60), 'x']);
+    expect(searchQueries({})).toEqual([]);
+  });
+  it('文章のあとの JSON を取り出す（根拠の文が先にあっても）', () => {
+    const body = { candidates: [{ content: { parts: [{ text: '吉野家の公式サイトでは、牛丼並盛は635kcal。\n{"name":"吉野家 牛丼 並盛","kcal":635}' }] } }] };
+    expect(extractJsonLoose(body)).toEqual({ name: '吉野家 牛丼 並盛', kcal: 635 });
   });
 });
