@@ -8,7 +8,12 @@ export interface DayData {
   summary: SummaryItem[];
   entries: Entry[];
   presets: Preset[];
+  /** 今月の節約（見込み）。どの日を見ていても、今日までの今月の値 */
   monthSaving: number | null;
+  /** 「この日は記録なしで確定」済みか */
+  confirmedEmpty: boolean;
+  /** 記録漏れの日（直近7日、今日を除く。§3.5） */
+  missingDays: string[];
   fetchedAt: string;
 }
 
@@ -28,8 +33,8 @@ export async function bootstrap(): Promise<void> {
   check(await supabase.rpc('bootstrap'));
 }
 
-export async function fetchDay(day: string, isToday: boolean): Promise<DayData> {
-  const [summary, entries, presets, saving] = await Promise.all([
+export async function fetchDay(day: string): Promise<DayData> {
+  const [summary, entries, presets, saving, status, missing] = await Promise.all([
     supabase.rpc('daily_summary', { p_day: day }),
     supabase
       .from('entries')
@@ -38,10 +43,13 @@ export async function fetchDay(day: string, isToday: boolean): Promise<DayData> 
       .is('deleted_at', null)
       .order('recorded_at', { ascending: false }),
     supabase.rpc('presets_ranked'),
-    supabase.rpc('month_saving', { p_today: isToday ? null : day }),
+    supabase.rpc('month_saving', { p_today: null }),
+    supabase.from('day_status').select('confirmed_empty').eq('day_key', day).maybeSingle(),
+    supabase.rpc('missing_days'),
   ]);
 
   type Row = Omit<Entry, 'values'> & { entry_values: { target_id: string; amount: number }[] };
+  const savingValue = check(saving);
   return {
     day,
     summary: (check(summary) as SummaryItem[]).map((s) => ({
@@ -55,9 +63,16 @@ export async function fetchDay(day: string, isToday: boolean): Promise<DayData> 
       values: Object.fromEntries(entry_values.map((v) => [v.target_id, num(v.amount)])),
     })),
     presets: (check(presets) as Preset[]).map((p) => ({ ...p, use_count: num(p.use_count) })),
-    monthSaving: check(saving) == null ? null : num(check(saving)),
+    monthSaving: savingValue == null ? null : num(savingValue),
+    confirmedEmpty: Boolean((check(status) as { confirmed_empty: boolean } | null)?.confirmed_empty),
+    missingDays: (check(missing) as string[]).map(String).sort(),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/** 「この日は記録なしで確定」（§3.5）／取り消し */
+export async function setConfirmedEmpty(day: string, confirmed: boolean): Promise<void> {
+  check(await supabase.rpc(confirmed ? 'confirm_empty_day' : 'unconfirm_empty_day', { p_day: day }));
 }
 
 /** キューの1件を送る。通信できないときは 'network'（あとで送り直す） */
@@ -116,20 +131,129 @@ export async function createPreset(label: string, amounts: Amounts, sort: number
   return (check(r) as { id: string }).id;
 }
 
-// 最後に読めたデータを端末に残しておき、オフラインで開いたときに出す
-const CACHE = 'zanryo.lastDay.v1';
+// ---------------------------------------------------------------------------
+// 設定（§5.4）
+// ---------------------------------------------------------------------------
+
+export interface Target {
+  id: string;
+  key: string | null;
+  name: string;
+  unit: string;
+  kind: 'reach' | 'cap';
+  daily_goal: number;
+  sort: number;
+  active: boolean;
+}
+
+export async function listTargets(): Promise<Target[]> {
+  const r = await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,sort,active').order('sort').order('created_at');
+  return (check(r) as Target[]).map((t) => ({ ...t, daily_goal: num(t.daily_goal) }));
+}
+
+export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind' | 'daily_goal' | 'active'>): Promise<void> {
+  const { id, ...fields } = t;
+  check(await supabase.from('targets').update(fields).eq('id', id));
+}
+
+export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'sort'>): Promise<void> {
+  check(await supabase.from('targets').insert(t));
+}
+
+/** 並べ替え：画面の順に sort を 10, 20, 30… と振り直す（変わった行だけ更新）。before は並べ替える前の値 */
+export async function reorder(table: 'targets' | 'presets', rows: { id: string }[], before: { id: string; sort: number }[]): Promise<void> {
+  const old = new Map(before.map((r) => [r.id, r.sort]));
+  const results = await Promise.all(
+    rows.map((r, i) => ((i + 1) * 10 === old.get(r.id) ? null : supabase.from(table).update({ sort: (i + 1) * 10 }).eq('id', r.id))),
+  );
+  for (const r of results) if (r) check(r);
+}
+
+export interface PresetRow {
+  id: string;
+  label: string;
+  sort: number;
+  amounts: Amounts;
+}
+
+export async function listPresets(): Promise<PresetRow[]> {
+  const r = await supabase.from('presets').select('id,label,sort,amounts').order('sort').order('label');
+  return check(r) as PresetRow[];
+}
+
+export async function savePreset(p: Pick<PresetRow, 'id' | 'label' | 'amounts'>): Promise<void> {
+  check(await supabase.from('presets').update({ label: p.label, amounts: p.amounts }).eq('id', p.id));
+}
+
+export async function deletePreset(id: string): Promise<void> {
+  check(await supabase.from('presets').delete().eq('id', id));
+}
+
+export interface WidgetTokenStatus {
+  issued_at: string;
+  last_used_at: string | null;
+}
+
+export async function widgetTokenStatus(): Promise<WidgetTokenStatus | null> {
+  const rows = check(await supabase.rpc('widget_token_status')) as WidgetTokenStatus[];
+  return rows[0] ?? null;
+}
+
+/** 発行・再発行。平文のトークンを返すのはこのときだけ（どこにも保存しない） */
+export async function issueWidgetToken(): Promise<string> {
+  return check(await supabase.rpc('issue_widget_token')) as string;
+}
+
+export async function revokeWidgetToken(): Promise<void> {
+  check(await supabase.rpc('revoke_widget_token'));
+}
+
+export async function geminiUsageToday(): Promise<number | null> {
+  const r = await supabase.rpc('gemini_usage_today');
+  return r.error || r.data == null ? null : num(r.data);
+}
+
+export const widgetUrl = () => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zanryo-widget-summary`;
+
+// ---------------------------------------------------------------------------
+// 最後に読めたデータを端末に残しておき、オフラインで開いたときに出す（日ごと、最近の数日分）
+// ---------------------------------------------------------------------------
+
+const CACHE = 'zanryo.days.v1';
+const KEEP = 10;
+
+function readCacheMap(): Record<string, DayData> {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE) || '{}') as Record<string, DayData>;
+  } catch {
+    return {};
+  }
+}
+
 export function saveCache(d: DayData) {
   try {
-    localStorage.setItem(CACHE, JSON.stringify(d));
+    const map = readCacheMap();
+    map[d.day] = d;
+    const keep = Object.keys(map).sort().slice(-KEEP);
+    localStorage.setItem(CACHE, JSON.stringify(Object.fromEntries(keep.map((k) => [k, map[k]]))));
+    localStorage.removeItem('zanryo.lastDay.v1'); // 古い形式
   } catch {
     /* noop */
   }
 }
+
 export function loadCache(day: string): DayData | null {
+  const d = readCacheMap()[day] as Partial<DayData> | undefined;
+  if (!d || !d.summary) return null;
+  return { ...d, confirmedEmpty: d.confirmedEmpty ?? false, missingDays: d.missingDays ?? [] } as DayData;
+}
+
+/** ログアウトしたら端末の記録のコピーを消す（共有端末で残さないため） */
+export function clearLocalData() {
   try {
-    const d = JSON.parse(localStorage.getItem(CACHE) || 'null') as DayData | null;
-    return d && d.day === day ? d : null;
+    localStorage.removeItem(CACHE);
+    localStorage.removeItem('zanryo.lastDay.v1');
   } catch {
-    return null;
+    /* noop */
   }
 }

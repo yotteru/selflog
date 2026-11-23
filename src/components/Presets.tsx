@@ -11,7 +11,7 @@ function PresetButton({ p, items, onPick }: { p: Preset; items: SummaryItem[]; o
   );
 }
 
-/** よく使う上位3件（§5.1） */
+/** よく使う上位3件（§5.1）。すべてのプリセットのシートは、設定で決めた並び順 */
 export function PresetGrid({
   presets,
   items,
@@ -57,7 +57,7 @@ export function PresetSheet({
   return (
     <Sheet title="プリセット" onClose={onClose}>
       <div className="presets">
-        {presets.map((p) => (
+        {[...presets].sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label, 'ja')).map((p) => (
           <PresetButton
             key={p.id}
             p={p}

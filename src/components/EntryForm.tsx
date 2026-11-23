@@ -1,12 +1,20 @@
 import { useState } from 'react';
-import type { Amounts, Entry, SummaryItem } from '../lib/types';
+import type { Amounts } from '../lib/types';
 import { Sheet } from './Sheet';
 
-function fieldLabel(i: SummaryItem): string {
+/** 入力欄に出すターゲット（日の集計 SummaryItem でも、設定の Target でもよい） */
+export interface FieldTarget {
+  target_id: string;
+  key: string | null;
+  name: string;
+  unit: string;
+}
+
+function fieldLabel(i: FieldTarget): string {
   if (i.key === 'kcal') return 'kcal';
   if (i.key === 'money') return 'お金（円）';
   if (i.key === 'p' || i.key === 'f' || i.key === 'c') return `${i.key.toUpperCase()}（${i.unit}）`;
-  return `${i.name}（${i.unit}）`;
+  return i.unit ? `${i.name}（${i.unit}）` : i.name;
 }
 
 export interface EntryFormResult {
@@ -15,24 +23,36 @@ export interface EntryFormResult {
   saveAsPreset: boolean;
 }
 
-/** 手入力で記録する／記録を直す（§5.1 今日の記録一覧の編集） */
+/**
+ * 名前と、ターゲットごとの量を入れるフォーム。
+ * 手入力で記録する／記録を直す（§5.1）／プリセットを直す（§5.4）で使う。
+ */
 export function EntryForm({
   items,
-  entry,
+  initial,
+  title,
+  submitLabel,
+  allowSaveAsPreset = false,
+  requireLabel = false,
   onSubmit,
   onDelete,
+  deleteLabel = 'この記録を削除する',
   onClose,
 }: {
-  items: SummaryItem[];
-  /** 渡せば編集、無ければ新規 */
-  entry?: Entry;
+  items: FieldTarget[];
+  initial?: { label: string; values: Amounts };
+  title: string;
+  submitLabel: string;
+  allowSaveAsPreset?: boolean;
+  requireLabel?: boolean;
   onSubmit: (r: EntryFormResult) => Promise<void>;
   onDelete?: () => void;
+  deleteLabel?: string;
   onClose: () => void;
 }) {
-  const [label, setLabel] = useState(entry?.label ?? '');
+  const [label, setLabel] = useState(initial?.label ?? '');
   const [vals, setVals] = useState<Record<string, string>>(() =>
-    Object.fromEntries(items.map((i) => [i.target_id, entry?.values[i.target_id] ? String(entry.values[i.target_id]) : ''])),
+    Object.fromEntries(items.map((i) => [i.target_id, initial?.values[i.target_id] ? String(initial.values[i.target_id]) : ''])),
   );
   const [saveAsPreset, setSaveAsPreset] = useState(false);
   const [error, setError] = useState('');
@@ -49,7 +69,7 @@ export function EntryForm({
     e.preventDefault();
     setError('');
     if (empty) return setError('どれか1つは量を入れてください');
-    if (saveAsPreset && !label.trim()) return setError('プリセットに保存するときは名前を入れてください');
+    if ((requireLabel || saveAsPreset) && !label.trim()) return setError('名前を入れてください');
     setBusy(true);
     try {
       await onSubmit({ label: label.trim(), values, saveAsPreset });
@@ -62,11 +82,11 @@ export function EntryForm({
   }
 
   return (
-    <Sheet title={entry ? '記録を直す' : '手入力で記録'} onClose={onClose}>
+    <Sheet title={title} onClose={onClose}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <label className="field">
           名前
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例：鶏むね肉の定食" maxLength={80} />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例：鶏むね肉の定食" maxLength={60} />
         </label>
         <div className="grid-fields">
           {items.map((i) => (
@@ -83,7 +103,7 @@ export function EntryForm({
             </label>
           ))}
         </div>
-        {!entry && (
+        {allowSaveAsPreset && (
           <label className="check">
             <input type="checkbox" checked={saveAsPreset} onChange={(e) => setSaveAsPreset(e.target.checked)} />
             プリセットに保存（次回からワンタップ）
@@ -91,11 +111,11 @@ export function EntryForm({
         )}
         {error && <div className="error" role="alert">{error}</div>}
         <button type="submit" className="primary" disabled={busy}>
-          {entry ? '保存する' : '記録する'}
+          {submitLabel}
         </button>
-        {entry && onDelete && (
+        {onDelete && (
           <button type="button" className="secondary danger" onClick={onDelete}>
-            この記録を削除する
+            {deleteLabel}
           </button>
         )}
       </form>

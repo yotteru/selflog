@@ -71,7 +71,7 @@ export function Login() {
           <p>
             {email} にメールを送りました。
             <br />
-            <strong>この Safari で</strong>メールのリンクを開いてください。開くとログインした状態になるので、画面の下の「パスワードを決める」でパスワードを決めます。
+            <strong>この Safari で</strong>メールのリンクを開いてください。開くとログインした状態になるので、画面のいちばん下の「⚙ 設定」→「パスワードを決める・変える」でパスワードを決めます。
           </p>
           <button type="button" className="link-btn" onClick={() => { setMode('password'); setSent(false); }}>
             戻る

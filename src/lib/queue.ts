@@ -53,7 +53,8 @@ export class Queue {
 
   constructor(
     private send: (op: Op) => Promise<SendResult>,
-    private onDropped: (op: Op, message: string) => void = () => {},
+    /** サーバーに断られて外した記録を知らせる（画面がトーストを出す） */
+    public onDropped: (op: Op, message: string) => void = () => {},
   ) {}
 
   all(): readonly Op[] {
@@ -110,6 +111,11 @@ export class Queue {
     } finally {
       this.flushing = false;
     }
+  }
+
+  /** すべて捨てる（ログアウトのとき） */
+  clear() {
+    this.set([]);
   }
 
   /** サーバーから読み直したあとに呼ぶ：送信済みのものは、もう読み直した値に含まれている */

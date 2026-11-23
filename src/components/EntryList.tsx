@@ -12,11 +12,13 @@ function summaryOf(e: Entry, items: SummaryItem[]) {
     .join(' · ');
 }
 
-/** 今日の記録一覧（v0 は簡素な一覧）。タップで編集 */
-export function EntryList({ entries, items, onEdit }: { entries: Entry[]; items: SummaryItem[]; onEdit: (e: Entry) => void }) {
+/** その日の記録一覧（v0 は簡素な一覧）。タップで編集 */
+export function EntryList({ entries, items, onEdit, title = '記録' }: { entries: Entry[]; items: SummaryItem[]; onEdit: (e: Entry) => void; title?: string }) {
   return (
     <section className="card entries" aria-label="記録一覧">
-      <h2>記録（{entries.length}件）</h2>
+      <h2>
+        {title}（{entries.length}件）
+      </h2>
       {entries.length === 0 && <div className="entry meta">まだ記録がありません</div>}
       {entries.map((e) => (
         <div className="entry" key={e.id}>

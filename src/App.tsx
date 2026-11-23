@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { bootstrap } from './lib/api';
 import { configured, supabase } from './lib/supabase';
 import { Login } from './screens/Login';
-import { Today } from './screens/Today';
+import { Home } from './screens/Home';
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -51,5 +51,5 @@ export function App() {
     );
   }
   if (!ready) return <main className="screen"><div className="notice">読み込み中…</div></main>;
-  return <Today onSignOut={() => void supabase.auth.signOut()} />;
+  return <Home onSignOut={() => void supabase.auth.signOut()} />;
 }
