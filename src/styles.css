@@ -422,6 +422,8 @@ button { cursor: pointer; }
    =========================================================================== */
 /* ページ全体は動かさない（下のタブが一緒に動かないように）。動くのは枠の中だけ */
 html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }
+/* iPhone のホーム画面アプリで、ページ全体が引っぱられて動く（下のタブがずれる）のを止める */
+body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
 .app {
   position: fixed; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 480px; height: auto;
 }

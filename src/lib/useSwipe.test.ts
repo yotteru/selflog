@@ -10,11 +10,18 @@ describe('スワイプの判定', () => {
     expect(swipeAxis(5, 40)).toBe('v');
     expect(swipeAxis(30, 30)).toBe('v');
   });
-  it('左へ60px以上で次、右へで前。行けない向きなら何もしない', () => {
+  it('左へ70px以上で次、右へで前。行けない向きなら何もしない', () => {
     expect(swipeResult(-80, true, true)).toBe('next');
     expect(swipeResult(80, true, true)).toBe('prev');
     expect(swipeResult(-40, true, true)).toBeNull();
     expect(swipeResult(-80, true, false)).toBeNull();
     expect(swipeResult(80, false, true)).toBeNull();
+  });
+  it('短くても素早く払えば移動する。ゆっくりなら移動しない', () => {
+    expect(swipeResult(-30, true, true, -0.6)).toBe('next');
+    expect(swipeResult(30, true, true, 0.6)).toBe('prev');
+    expect(swipeResult(-30, true, true, -0.1)).toBeNull();
+    expect(swipeResult(-10, true, true, -1)).toBeNull();
+    expect(swipeResult(-30, true, false, -0.6)).toBeNull();
   });
 });

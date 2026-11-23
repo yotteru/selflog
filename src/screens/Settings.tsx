@@ -494,6 +494,9 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
       <WidgetSection />
       <UsageSection />
       <AccountSection onSignOut={onSignOut} />
+      <p className="hint center">
+        版 {__APP_VERSION__}（{new Date(__APP_BUILT_AT__).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}）
+      </p>
     </div>
   );
 }
