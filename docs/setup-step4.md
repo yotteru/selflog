@@ -9,7 +9,7 @@
 ## 無料枠だけで使う（お金は絶対にかからない）
 
 - APIキーは **Google AI Studio** で作る。**支払い方法（Billing）を登録しない**。登録していなければ、上限を超えてもエラーになるだけで請求は来ない。
-- 1日に Gemini を呼ぶ回数を、アプリ側でも数えて止める（初期値 15回/日）。
+- 1日に Gemini を呼ぶ回数を、アプリ側でも数えて止める（初期値 100回/日。無料枠は 500回/日）。
 - 無料枠では、送った画像が Google の製品改善に使われ、人が見ることがある。そのため：
   - 送る前に**枠で切り抜く**（枠の外は送らない）。人の顔・部屋の中・個人情報を入れない。
   - 写真の位置情報（EXIF）は、送る前にアプリが取り除く。
@@ -22,14 +22,13 @@ SQL Editor で `supabase/sql/04_capture.sql` を実行する。
 ## 2. Gemini の APIキーを作る
 
 1. https://aistudio.google.com/apikey を開き、Google アカウントでログイン。
-2. **Create API key** → 新しいプロジェクトで作る。
+2. **Create API key** → **新しいプロジェクト**で作る（無料枠の上限はプロジェクトごとに分け合うので、このアプリ専用にする）。
 3. 表示されたキーをコピーする。**このキーは秘密。チャット・メモ・リポジトリに貼らない。** 次の手順で Supabase に入れるだけにする。
 4. キーの一覧で、プラン（Plan / Tier）が **Free** になっていることを確かめる。「Set up billing」などは押さない。
 
-### 無料枠の上限を確かめる
+### 無料枠の上限
 
-AI Studio の **Usage / Rate limits** の画面で、`gemini-flash-lite-latest`（Flash-Lite）の **RPD（1日の回数）** を見て、Claude に数字だけ教える。
-アプリの1日の上限（`ZANRYO_GEMINI_DAILY_LIMIT`、初期値 15）を、それより十分少なくしておく。
+Flash-Lite は 15回/分・500回/日（2026-11-23 に AI Studio で確認）。アプリは 100回/日で止める。
 
 ## 3. Supabase にキーを入れる
 
@@ -39,7 +38,7 @@ AI Studio の **Usage / Rate limits** の画面で、`gemini-flash-lite-latest`�
 |---|---|
 | `ZANRYO_GEMINI_API_KEY` | 手順2のキー |
 
-任意（入れなければ初期値）：`ZANRYO_GEMINI_MODEL`（初期値 `gemini-flash-lite-latest`）、`ZANRYO_GEMINI_DAILY_LIMIT`（初期値 `15`）。
+任意（入れなければ初期値）：`ZANRYO_GEMINI_MODEL`（初期値 `gemini-flash-lite-latest`）、`ZANRYO_GEMINI_DAILY_LIMIT`（初期値 `100`）。
 
 ## 4. Edge Function を置く
 

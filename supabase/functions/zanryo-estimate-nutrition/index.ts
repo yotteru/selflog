@@ -14,7 +14,7 @@
 // シークレット（Edge Functions → Secrets。shiori と分けるため ZANRYO_ で始める）:
 //   ZANRYO_GEMINI_API_KEY      … 必須
 //   ZANRYO_GEMINI_MODEL        … 省略時 gemini-flash-lite-latest
-//   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 15（無料枠の1日の上限より十分少なく）
+//   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 100（無料枠の1日の上限 500 より十分少なく）
 //   ZANRYO_ALLOWED_ORIGINS     … 省略時 https://yotteru.github.io,http://localhost:5173
 //
 // ダッシュボードに貼り付けて使えるよう、1ファイルにまとめ、外部ライブラリを使っていない。
@@ -206,7 +206,7 @@ async function handle(req: Request): Promise<Response> {
 
   // 3) 1日の上限（超えていたら Gemini を呼ばない）
   const service = env('SUPABASE_SERVICE_ROLE_KEY')!;
-  const limit = Number(env('ZANRYO_GEMINI_DAILY_LIMIT') ?? '15');
+  const limit = Number(env('ZANRYO_GEMINI_DAILY_LIMIT') ?? '100');
   const consumed = await rpc('try_consume_gemini_call', { p_daily_limit: limit }, service, `Bearer ${service}`);
   if (!consumed.ok) return fail(500, 'failed');
   if ((await consumed.json()) !== true) return fail(200, 'daily_limit');

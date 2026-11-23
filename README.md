@@ -48,11 +48,11 @@ Supabaseに接続せずに、shiori との分離（public に何も作らない�
 ## Gemini の無料枠
 
 - モデルは `gemini-flash-lite-latest`（Flash 系でいちばん軽いもの）。Edge Function のシークレット `ZANRYO_GEMINI_MODEL` で変えられる。
-- 無料枠の上限（RPM・RPD）は、**公式の値をまだ確かめられていない**（作業環境から Google の公式ドキュメントにつながらなかった）。
-  AI Studio の Rate limits の画面で確かめて、ここに書く：
-  - `gemini-flash-lite-latest`：RPM ＿＿ / RPD ＿＿（確認日 ＿＿）
-- 参考（非公式・フォーラムの書き込み。2026年時点で Flash は 20 RPD、Flash-Lite は 500 RPD に減ったという報告がある）
-- アプリ側の1日の上限 `ZANRYO_GEMINI_DAILY_LIMIT` は初期値 15。無料枠の RPD より十分少なくする。
+- 無料枠の上限（AI Studio の Rate limits の画面で確認。2026-11-23）：
+  - Flash-Lite（Gemini 3.5 Flash Lite / 3.1 Flash Lite）：**15 RPM / 500 RPD**
+  - Flash（Gemini 3.5 Flash / 3.8 Flash）：5 RPM / 20 RPD（少ないので使わない）
+- アプリ側の1日の上限 `ZANRYO_GEMINI_DAILY_LIMIT` は初期値 **100**（500 より十分少ない）。
+- 上限は Google のプロジェクト単位で、同じプロジェクトのほかのアプリと分け合う。このアプリ専用のプロジェクトでキーを作る。
 - 1日の区切りは太平洋時間の0時（無料枠のリセットに合わせる）。
 
 - [ ] 5. 5.3（過去の日・記録漏れのバナー）
