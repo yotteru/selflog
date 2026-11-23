@@ -18,6 +18,7 @@ import {
   type WidgetTokenStatus,
 } from '../lib/api';
 import { fmt, presetSub, KIND_TAG, PERIOD_WORD } from '../lib/display';
+import { defaultShowPace, setShowPace, showPace } from '../lib/pace';
 import { queue } from '../lib/queueInstance';
 import { move, renumber } from '../lib/reorder';
 import type { Period, SummaryItem } from '../lib/types';
@@ -65,6 +66,7 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
   const [period, setPeriod] = useState<Period>(target?.period ?? 'day');
   const [goal, setGoal] = useState(target ? String(target.daily_goal) : '');
   const [active, setActive] = useState(target?.active ?? true);
+  const [pace, setPace] = useState(target ? showPace({ target_id: target.id, key: target.key }) : defaultShowPace(null));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const keyed = Boolean(target?.key);
@@ -78,8 +80,13 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
     if (unit.length > 10) return setError('単位は10文字までです');
     setBusy(true);
     try {
-      if (target) await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, active });
-      else await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, sort: nextSort });
+      if (target) {
+        await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, active });
+        setShowPace(target.id, pace);
+      } else {
+        const id = await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, sort: nextSort });
+        setShowPace(id, pace);
+      }
       onSaved();
       onClose();
     } catch (err) {
@@ -133,6 +140,13 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
             使う（外すと今日から表示しない。過去の日はそのまま）
           </label>
         )}
+        <label className="check">
+          <input type="checkbox" checked={pace} onChange={(e) => setPace(e.target.checked)} />
+          ペースの目安を出す（▼）
+        </label>
+        <p className="hint">
+          「いまの時刻なら、残りはこのくらい」の目安。1日を通して記録していくもの（食事など）向け。お金やスクリーンタイムのように、まとめて入力するものはオフがおすすめ。この設定はこの端末にだけ保存されます。
+        </p>
         {keyed && <p className="hint">「{KEYED[target!.key!]}」は写真の読み取りや節約の計算で使うので、単位は変えられません。</p>}
         <p className="hint">目標や期間を変えると今日から反映されます。過去の日の目標は変わりません。</p>
         {error && <div className="error" role="alert">{error}</div>}

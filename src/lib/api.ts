@@ -218,10 +218,10 @@ export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind'
   check(r);
 }
 
-export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'sort'>): Promise<void> {
-  let r = await supabase.from('targets').insert(t);
-  if (noPeriodColumn(r.error)) r = await supabase.from('targets').insert(withoutPeriod(t, r.error));
-  check(r);
+export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'sort'>): Promise<string> {
+  let r = await supabase.from('targets').insert(t).select('id').single();
+  if (noPeriodColumn(r.error)) r = await supabase.from('targets').insert(withoutPeriod(t, r.error)).select('id').single();
+  return (check(r) as { id: string }).id;
 }
 
 /** 並べ替え：画面の順に sort を 10, 20, 30… と振り直す（変わった行だけ更新）。before は並べ替える前の値 */

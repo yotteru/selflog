@@ -1,10 +1,26 @@
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addDays, formatDayLabel } from '../lib/dayKey';
+import { pacePrefsVersion, paceFor, showPace, subscribePace } from '../lib/pace';
 import { dayBounds, dayTitle } from '../lib/days';
 import { fmt } from '../lib/display';
 import type { SummaryItem } from '../lib/types';
 import { useSwipe } from '../lib/useSwipe';
 import { DayHeader } from '../components/DayHeader';
 import { MeterRow, RingCard } from '../components/Gauges';
+
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    const onVisible = () => document.visibilityState === 'visible' && setNow(Date.now());
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+  return now;
+}
 
 /**
  * ホーム（v1・スクロールしない）：情報を見ることに徹する画面。記録は下の「＋」から。
@@ -50,6 +66,10 @@ export function HomeScreen({
     canPrev: day > min,
     canNext: !isToday,
   });
+  // ペースの目安：1分ごとに時刻を進め、ターゲットごとの「出す・出さない」の変更にもついていく
+  const now = useNow();
+  useSyncExternalStore(subscribePace, pacePrefsVersion);
+  const pace = (i: SummaryItem) => (showPace(i) ? paceFor(i, day, now) : null);
   const ringItem = items.find((i) => i.key === 'kcal') ?? items[0];
   const meters = items.filter((i) => i !== ringItem);
   const saving = monthSaving == null ? undefined : `今月の節約（見込み）${monthSaving < 0 ? '−' : ''}¥${fmt(monthSaving)}`;
@@ -96,11 +116,11 @@ export function HomeScreen({
         <div className="notice">読み込み中…</div>
       ) : (
         <>
-          {ringItem && <RingCard item={ringItem} />}
+          {ringItem && <RingCard item={ringItem} pace={pace(ringItem)} />}
           {meters.length > 0 && (
             <section className="card meters" aria-label="ターゲット">
               {meters.map((m) => (
-                <MeterRow key={m.target_id} item={m} extra={m.key === 'money' ? saving : undefined} />
+                <MeterRow key={m.target_id} item={m} pace={pace(m)} extra={m.key === 'money' ? saving : undefined} />
               ))}
             </section>
           )}
