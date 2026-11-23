@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, dayKeyOf, diffDays, formatDayLabel, isRecordableDay, todayKey } from './dayKey';
+import { addDays, dayKeyOf, diffDays, formatDayLabel, formatDayLong, isRecordableDay, todayKey } from './dayKey';
 
 // JSTの時刻を表すDate（+09:00で指定）
 const jst = (s: string) => new Date(`${s}+09:00`);
@@ -58,5 +58,6 @@ describe('日付の計算', () => {
   it('formatDayLabel', () => {
     expect(formatDayLabel('2026-11-21')).toBe('11/21（土）');
     expect(formatDayLabel('2026-11-23')).toBe('11/23（月）');
+    expect(formatDayLong('2026-11-23')).toBe('11月23日（月）');
   });
 });

@@ -8,6 +8,7 @@ shiori と同じ Supabase プロジェクトで動かすので、このアプリ
 | `00_check_before_install.sql` | 最初に1回 | 入れる前の確認（読むだけ） |
 | `01_schema.sql` | 最初に1回 | テーブル・RLS・集計関数・ウィジェット用トークン |
 | `02_gemini_usage.sql` | 最初に1回 | Gemini の1日の呼び出し回数のカウンター |
+| `03_presets_ranked.sql` | 最初に1回 | プリセットを「よく使う順」に返す関数（ステップ3で追加） |
 | `10_add_member.sql` | 最初に1回 | 自分を利用者として登録する（UID を書き換えて実行） |
 | `99_uninstall.sql` | 消したいとき | 2つのスキーマごと削除（shiori には影響しない） |
 
@@ -27,7 +28,7 @@ shiori と同じ Supabase プロジェクトで動かすので、このアプリ
 | `entries` / `entry_values` | テーブル | 1回の記録と、ターゲットごとの量 |
 | `day_goals` | テーブル | 日ごとの目標値のスナップショット（読むだけ） |
 | `day_status` | テーブル | 日ごとの確定状態（読むだけ） |
-| `daily_summary(day)` など | 関数 | 集計・記録・トークン発行のRPC |
+| `daily_summary(day)`、`presets_ranked()` など | 関数 | 集計・記録・トークン発行のRPC |
 
 **zanryo_private**（内部用。Data API には公開しない）
 

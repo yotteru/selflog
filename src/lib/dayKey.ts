@@ -52,3 +52,9 @@ export function formatDayLabel(key: DayKey): string {
   const d = new Date(parse(key));
   return `${d.getUTCMonth() + 1}/${d.getUTCDate()}（${WEEKDAYS[d.getUTCDay()]}）`;
 }
+
+/** '11月23日（月）' */
+export function formatDayLong(key: DayKey): string {
+  const d = new Date(parse(key));
+  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEKDAYS[d.getUTCDay()]}）`;
+}
