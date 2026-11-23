@@ -386,7 +386,7 @@ async function handle(req: Request): Promise<Response> {
 
     if (mode === 'name') {
       const useSearch = env('ZANRYO_GEMINI_SEARCH') !== 'off';
-      let searchFailure = '';
+      let searchFailure = useSearch ? '' : 'search_off';
       if (useSearch) {
         // 検索つきは、無料枠で検索が使える世代のモデルで呼ぶ
         const r = await call(
@@ -404,7 +404,7 @@ async function handle(req: Request): Promise<Response> {
         }
         // 検索つきが失敗したら（検索が無料枠で使えない・検索の上限など）、検索なしで1回だけ呼ぶ。
         // 同じ呼び出しを繰り返すのではなく、別の呼び出しを1回だけ試す。それも 429 なら止める。
-        searchFailure = `search:${r.status}:${errorHint(r.body)}`;
+        searchFailure = `${lookupModel}:${r.status}:${errorHint(r.body)}`;
         const again = await consume();
         if (again) return again;
       }
@@ -417,7 +417,8 @@ async function handle(req: Request): Promise<Response> {
         return r.status === 429 ? fail(200, 'rate_limited', detail) : fail(200, 'failed', detail);
       }
       const draft = validateLookup(extractJson(r.body));
-      return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false }) : fail(200, 'failed', 'unreadable');
+      // 検索が使えなかった理由も返す（画面の「詳細」に出す。上限の名前やエラー文の先頭だけ）
+      return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false, searchError: searchFailure }) : fail(200, 'failed', 'unreadable');
     }
 
     const m = mode as Mode;

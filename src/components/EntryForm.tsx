@@ -159,7 +159,10 @@ export function EntryForm({
                 </span>
               )
             ) : (
-              <span className="hint">Google 検索が使えなかったため、Gemini の知識から出した値です。</span>
+              <span className="hint">
+                Google 検索が使えなかったため、Gemini の知識から出した値です。
+                {found.searchError && `（詳細：${found.searchError}）`}
+              </span>
             )}
           </div>
         )}

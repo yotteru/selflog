@@ -136,6 +136,8 @@ export type LookupResult =
       sources: { title: string; uri: string }[];
       /** Google 検索を使えたか（false なら Gemini の知識だけ） */
       searched: boolean;
+      /** 検索が使えなかった理由（手がかり） */
+      searchError?: string;
     }
   | Failure;
 
