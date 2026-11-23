@@ -86,22 +86,25 @@ export type EstimateResult =
   | { ok: true; mode: 'photo'; draft: { name: string; kcal: number; p: number; f: number; c: number; confidence: 'low' | 'mid' | 'high' } }
   | { ok: true; mode: 'label'; draft: { basis: 'per100g' | 'per_unit'; unit_label: string; unit_grams: number | null; kcal: number; p: number; f: number; c: number } }
   | { ok: true; mode: 'receipt'; draft: { store: string; total: number; items: { name: string; price: number }[] } }
-  | { ok: false; reason: 'not_member' | 'bad_request' | 'daily_limit' | 'rate_limited' | 'failed' | 'offline' };
+  | { ok: false; reason: 'not_member' | 'bad_request' | 'daily_limit' | 'rate_limited' | 'failed' | 'offline'; detail?: string };
 
 /** 写真から下書きを作る（Edge Function zanryo-estimate-nutrition）。失敗しても例外にせず、理由を返す */
 export async function estimate(mode: EstimateMode, image: string): Promise<EstimateResult> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return { ok: false, reason: 'offline' };
   const { data, error } = await supabase.functions.invoke('zanryo-estimate-nutrition', { body: { mode, image } });
   if (data && typeof data === 'object' && 'ok' in data) return data as EstimateResult;
-  if (error) {
+  // 失敗の手がかり：関数が返した理由、なければ HTTP の番号（404=関数が無い、401=ログイン/JWT の設定 など）
+  const res = (error as { context?: Response } | null)?.context;
+  if (res && typeof res.status === 'number') {
     try {
-      const body = await (error as { context?: Response }).context?.json();
+      const body = await res.clone().json();
       if (body && typeof body === 'object' && 'ok' in body) return body as EstimateResult;
     } catch {
-      /* noop */
+      /* 本文が JSON でない */
     }
+    return { ok: false, reason: 'failed', detail: `HTTP ${res.status}` };
   }
-  return { ok: false, reason: 'failed' };
+  return { ok: false, reason: 'failed', detail: error ? (error as Error).name || 'error' : 'no_response' };
 }
 
 export async function updateEntry(id: string, label: string, values: Amounts): Promise<void> {

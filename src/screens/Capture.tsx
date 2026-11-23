@@ -145,7 +145,7 @@ export function Capture({
 
   function apply(r: EstimateResult) {
     if (!r.ok) {
-      setNotice(REASONS[r.reason] ?? REASONS.failed);
+      setNotice((REASONS[r.reason] ?? REASONS.failed) + (r.detail ? `（詳細：${r.detail}）` : ''));
       return;
     }
     if (r.mode === 'photo') {

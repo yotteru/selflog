@@ -4,6 +4,7 @@
 // 入力: { mode: 'photo' | 'label' | 'receipt', image: <JPEG の base64> }
 // 出力: { ok: true, mode, draft } または { ok: false, reason, draft: null }
 //   reason: not_member / bad_request / daily_limit / rate_limited / failed
+//   detail: 失敗したときの手がかり（例: gemini_404, usage_check_401, no_api_key）。秘密の値や読み取り内容は入れない
 //
 // 無料枠だけで使う（§6）：
 //   - キーは Cloud Billing を有効にしていないプロジェクトのもの（AI Studio で発行）。上限を超えてもエラーになるだけ。
@@ -174,7 +175,7 @@ async function handle(req: Request): Promise<Response> {
   };
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
-  const fail = (status: number, reason: string) => json(status, { ok: false, reason, draft: null });
+  const fail = (status: number, reason: string, detail?: string) => json(status, { ok: false, reason, detail, draft: null });
 
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return fail(405, 'bad_request');
@@ -191,7 +192,8 @@ async function handle(req: Request): Promise<Response> {
 
   // 1) このアプリの利用者か（ログインしているだけでは足りない。shiori のユーザーは使えない）
   const member = await rpc('is_member', {}, apikey, auth);
-  if (!member.ok || (await member.json()) !== true) return fail(403, 'not_member');
+  if (!member.ok) return fail(403, 'not_member', `member_check_${member.status}`);
+  if ((await member.json()) !== true) return fail(403, 'not_member');
 
   // 2) 入力
   let mode: unknown, image: unknown;
@@ -208,12 +210,12 @@ async function handle(req: Request): Promise<Response> {
   const service = env('SUPABASE_SERVICE_ROLE_KEY')!;
   const limit = Number(env('ZANRYO_GEMINI_DAILY_LIMIT') ?? '100');
   const consumed = await rpc('try_consume_gemini_call', { p_daily_limit: limit }, service, `Bearer ${service}`);
-  if (!consumed.ok) return fail(500, 'failed');
+  if (!consumed.ok) return fail(500, 'failed', `usage_check_${consumed.status}`);
   if ((await consumed.json()) !== true) return fail(200, 'daily_limit');
 
   // 4) Gemini（リトライしない）
   const key = env('ZANRYO_GEMINI_API_KEY');
-  if (!key) return fail(500, 'failed');
+  if (!key) return fail(500, 'failed', 'no_api_key');
   const model = env('ZANRYO_GEMINI_MODEL') ?? 'gemini-flash-lite-latest';
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -230,13 +232,13 @@ async function handle(req: Request): Promise<Response> {
     if (res.status === 429) return fail(200, 'rate_limited');
     if (!res.ok) {
       console.error('gemini error', res.status); // 本文は記録しない（画像や読み取り内容を残さない）
-      return fail(200, 'failed');
+      return fail(200, 'failed', `gemini_${res.status}`);
     }
     const draft = validateDraft(mode, extractJson(await res.json()));
-    return draft ? json(200, { ok: true, mode, draft }) : fail(200, 'failed');
+    return draft ? json(200, { ok: true, mode, draft }) : fail(200, 'failed', 'unreadable');
   } catch (e) {
     console.error('gemini request failed', (e as Error).name);
-    return fail(200, 'failed');
+    return fail(200, 'failed', (e as Error).name === 'AbortError' ? 'gemini_timeout' : 'gemini_network');
   } finally {
     clearTimeout(timer);
   }
