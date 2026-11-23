@@ -70,3 +70,9 @@ describe('shiori との分離', () => {
     expect(left.rows).toEqual([]);
   });
 });
+
+describe('SQLファイルを二重に実行したとき', () => {
+  it.each(['01_schema.sql', '02_gemini_usage.sql'])('%s は「実行済み」と分かるエラーで止まる', async (f) => {
+    await expect(db.exec(readSql(f))).rejects.toThrow(/すでに実行済みです/);
+  });
+});

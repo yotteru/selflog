@@ -14,6 +14,15 @@
 -- - 日の区切りは zanryo.day_key_of()（JST 4:00）。src/lib/dayKey.ts と同じ結果になる。
 -- - day_goals / day_status は書き込みをRPC（security definer）経由に限定し、クライアントからは読むだけ。
 
+-- 二重に実行しないための確認（実行済みなら、何も変えずにここで止まる）
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'zanryo') then
+    raise exception '01_schema.sql はすでに実行済みです。もう一度流す必要はありません（何も変更していません）。';
+  end if;
+end
+$$;
+
 create schema zanryo;
 create schema zanryo_private;
 comment on schema zanryo is '残量アプリ（selflog リポジトリ）。shiori とは無関係';

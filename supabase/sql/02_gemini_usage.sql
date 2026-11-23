@@ -5,6 +5,15 @@
 -- 日の区切りは、無料枠の1日あたりの上限（RPD）がリセットされる太平洋時間の0時に合わせる。
 -- 無料枠の上限はAPIキー（プロジェクト）単位なので、ユーザーごとではなく全体で数える。
 
+-- 二重に実行しないための確認（実行済みなら、何も変えずにここで止まる）
+do $$
+begin
+  if to_regclass('zanryo_private.gemini_usage') is not null then
+    raise exception '02_gemini_usage.sql はすでに実行済みです。もう一度流す必要はありません（何も変更していません）。';
+  end if;
+end
+$$;
+
 create table zanryo_private.gemini_usage (
   usage_day date primary key,
   calls int not null default 0 check (calls >= 0),
