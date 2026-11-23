@@ -75,16 +75,18 @@ export function Capture({
   day,
   isToday,
   items,
+  initialMode = 'photo',
   onRecord,
   onClose,
 }: {
   day: string;
   isToday: boolean;
   items: SummaryItem[];
+  initialMode?: EstimateMode;
   onRecord: (r: CaptureResult) => Promise<void>;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<EstimateMode>('photo');
+  const [mode, setMode] = useState<EstimateMode>(initialMode);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [rect, setRect] = useState<CropRect>(CENTER);
   const [phase, setPhase] = useState<'pick' | 'crop' | 'estimating' | 'edit'>('pick');
@@ -103,7 +105,7 @@ export function Capture({
   const [amount, setAmount] = useState(100);
   const [money, setMoney] = useState(0);
   const [receiptItems, setReceiptItems] = useState<{ name: string; price: number }[]>([]);
-  const [saveAsPreset, setSaveAsPreset] = useState(true);
+  const [saveAsPreset, setSaveAsPreset] = useState(initialMode !== 'receipt');
 
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);

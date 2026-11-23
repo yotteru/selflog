@@ -1,35 +1,53 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { createPreset, fetchDay, loadCache, lookupByName, saveCache, setConfirmedEmpty, updateEntry, type DayData } from '../lib/api';
-import { addDays, formatDayLabel, formatDayLong, todayKey } from '../lib/dayKey';
-import { clampDay, dayBounds, dayTitle, daysWithQueuedAdds, missingBannerText, relativeLabel } from '../lib/days';
+import {
+  createPreset,
+  fetchDay,
+  loadCache,
+  lookupByName,
+  saveCache,
+  setConfirmedEmpty,
+  updateEntry,
+  type DayData,
+  type EstimateMode,
+} from '../lib/api';
+import { formatDayLabel, todayKey } from '../lib/dayKey';
+import { clampDay, daysWithQueuedAdds, missingBannerText } from '../lib/days';
 import { type View } from '../lib/display';
 import { overlay } from '../lib/overlay';
 import { queue } from '../lib/queueInstance';
 import type { Entry, Preset } from '../lib/types';
-import { CalorieCard, MacroCard, MoneyCard } from '../components/Cards';
 import { EntryForm, type EntryFormResult } from '../components/EntryForm';
-import { EntryList } from '../components/EntryList';
-import { PresetGrid, PresetSheet } from '../components/Presets';
+import { RecordSheet } from '../components/RecordSheet';
+import { TabBar, type Tab } from '../components/TabBar';
 import { Toast, type ToastState } from '../components/Toast';
 import { Capture, type CaptureResult } from './Capture';
+import { EntriesScreen } from './EntriesScreen';
+import { HomeScreen } from './HomeScreen';
+import { PeriodScreen } from './PeriodScreen';
 import { Settings } from './Settings';
 
 const uuid = () => crypto.randomUUID();
 
+type SheetState =
+  | null
+  | { kind: 'record' }
+  | { kind: 'add'; label?: string; autoLookup?: boolean }
+  | { kind: 'edit'; entry: Entry };
+
 /**
- * 日ごとの画面。
- * - 今日：今日の残り（§5.1, モック Main）。記録漏れの日があれば一番上にお知らせ（§3.5）
- * - 過去の日：同じ構成で、その日の残量と記録（§5.3）。ここから記録したものはすべてその日に入る
+ * アプリの土台（v1）：下のタブ（ホーム／記録一覧／＋記録／期間／設定）と、日ごとのデータ・送信キュー。
+ * ホームと記録一覧は同じ「選んでいる日」を見る。過去の日を選んで記録すると、その日に入る（§5.3）。
  */
-export function Home({ onSignOut }: { onSignOut: () => void }) {
+export function Shell({ onSignOut }: { onSignOut: () => void }) {
+  const [tab, setTab] = useState<Tab>('home');
   const [today, setToday] = useState(todayKey());
   const [day, setDay] = useState(today);
   const [data, setData] = useState<DayData | null>(() => loadCache(today));
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState<View>('front');
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [screen, setScreen] = useState<'day' | 'capture' | 'settings'>('day');
-  const [sheet, setSheet] = useState<null | { kind: 'presets' } | { kind: 'add' } | { kind: 'edit'; entry: Entry }>(null);
+  const [sheet, setSheet] = useState<SheetState>(null);
+  const [capture, setCapture] = useState<EstimateMode | null>(null);
   const [busy, setBusy] = useState(false);
 
   const isToday = day === today;
@@ -113,21 +131,22 @@ export function Home({ onSignOut }: { onSignOut: () => void }) {
     setData(loadCache(next));
     setLoadError('');
     void refresh(next);
-    window.scrollTo(0, 0);
+  }
+
+  function selectTab(t: Tab) {
+    if (t === tab) return;
+    // 設定から戻ったら、目標の変更を反映するため読み直す
+    if (tab === 'settings') void refresh();
+    setTab(t);
   }
 
   const current = data && data.day === day ? data : null;
   const shown = useMemo(() => (current ? overlay(day, current.summary, current.entries, ops) : null), [current, day, ops]);
   const items = shown?.summary ?? [];
-  const kcal = items.find((i) => i.key === 'kcal');
-  const money = items.find((i) => i.key === 'money');
-  const macros = items.filter((i) => i !== kcal && i !== money);
 
   // 記録漏れの日（キューに記録がある日は、もう記録したものとして外す）
   const queuedDays = useMemo(() => daysWithQueuedAdds(ops), [ops]);
   const missing = (data?.missingDays ?? []).filter((d) => !queuedDays.has(d) && d < today);
-  const banner = missingBannerText(missing);
-  const otherMissing = missing.filter((d) => d !== day);
 
   const record = useCallback(
     (label: string, values: Record<string, number>, source: Entry['source'], presetId: string | null) => {
@@ -146,7 +165,10 @@ export function Home({ onSignOut }: { onSignOut: () => void }) {
     [showToast, sync],
   );
 
-  const pickPreset = (p: Preset) => record(p.label, p.amounts, 'preset', p.id);
+  const pickPreset = (p: Preset) => {
+    setSheet(null);
+    record(p.label, p.amounts, 'preset', p.id);
+  };
 
   async function withPreset(r: { label: string; values: Record<string, number>; saveAsPreset: boolean }) {
     if (!r.saveAsPreset) return null;
@@ -198,142 +220,98 @@ export function Home({ onSignOut }: { onSignOut: () => void }) {
   }
 
   const unsent = ops.filter((o) => !o.sent).length;
-  const { min } = dayBounds(today);
+  const noEntries = shown ? shown.entries.length === 0 : false;
+  const dayLabel = isToday ? '今日' : formatDayLabel(day);
 
-  if (screen === 'capture') {
-    return <Capture day={day} isToday={isToday} items={items} onRecord={submitCapture} onClose={() => setScreen('day')} />;
-  }
-  if (screen === 'settings') {
+  if (capture) {
     return (
-      <Settings
-        onClose={() => {
-          setScreen('day');
-          void refresh();
-        }}
-        onSignOut={onSignOut}
+      <Capture
+        day={day}
+        isToday={isToday}
+        items={items}
+        initialMode={capture}
+        onRecord={submitCapture}
+        onClose={() => setCapture(null)}
       />
     );
   }
 
-  const noEntries = shown ? shown.entries.length === 0 : false;
+  const common = {
+    day,
+    today,
+    isToday,
+    items,
+    loading: !shown,
+    loadError,
+    unsent,
+    onGo: goTo,
+  };
 
   return (
-    <main className="screen">
-      {isToday && banner && (
-        <button type="button" className="banner banner-button" onClick={() => goTo(missing[0])}>
-          <span>{banner}</span>
-          <span aria-hidden="true">›</span>
-        </button>
-      )}
-
-      <header className="header">
-        <div>
-          <label className="date-picker">
-            <span className="date">
-              {formatDayLong(day)}
-              {!isToday && <span className="rel">（{relativeLabel(day, today)}）</span>} ▾
-            </span>
-            <input
-              type="date"
-              aria-label="日付を選ぶ"
-              min={min}
-              max={today}
-              value={day}
-              onChange={(e) => e.target.value && goTo(e.target.value)}
-            />
-          </label>
-          <h1 className={isToday ? '' : 'past'}>{dayTitle(day, today, view)}</h1>
-        </div>
-        <div className="seg" role="group" aria-label="表示の切り替え">
-          <button type="button" aria-pressed={view === 'front'} onClick={() => setView('front')}>
-            残り
-          </button>
-          <button type="button" aria-pressed={view === 'back'} onClick={() => setView('back')}>
-            積み上げ
-          </button>
-        </div>
-      </header>
-
-      <nav className="day-nav" aria-label="日付の移動">
-        <button type="button" className="link-btn" onClick={() => goTo(addDays(day, -1))} disabled={day <= min}>
-          ‹ 前の日
-        </button>
-        {!isToday && (
-          <button type="button" className="link-btn" onClick={() => goTo(today)}>
-            今日に戻る
-          </button>
+    <div className="app">
+      <main className="app-body">
+        {tab === 'home' && (
+          <HomeScreen
+            {...common}
+            view={view}
+            onView={setView}
+            presets={current?.presets ?? []}
+            monthSaving={current?.monthSaving ?? null}
+            banner={isToday ? missingBannerText(missing) : null}
+            onBanner={() => missing[0] && goTo(missing[0])}
+            canConfirmEmpty={!isToday && noEntries && !current?.confirmedEmpty}
+            confirmedEmpty={noEntries && Boolean(current?.confirmedEmpty)}
+            busy={busy}
+            onConfirmEmpty={confirmEmpty}
+            onPick={pickPreset}
+            onMorePresets={() => setSheet({ kind: 'record' })}
+          />
         )}
-        <button type="button" className="link-btn" onClick={() => goTo(addDays(day, 1))} disabled={isToday} aria-label="次の日">
-          次の日 ›
-        </button>
-      </nav>
+        {tab === 'entries' && (
+          <EntriesScreen
+            {...common}
+            entries={shown?.entries ?? []}
+            otherMissing={missing.filter((d) => d !== day)}
+            canConfirmEmpty={!isToday && noEntries && !current?.confirmedEmpty}
+            confirmedEmpty={noEntries && Boolean(current?.confirmedEmpty)}
+            busy={busy}
+            onConfirmEmpty={confirmEmpty}
+            onEdit={(entry) => setSheet({ kind: 'edit', entry })}
+          />
+        )}
+        {tab === 'period' && (
+          <PeriodScreen
+            today={today}
+            onOpenDay={(d) => {
+              goTo(d);
+              setTab('home');
+            }}
+          />
+        )}
+        {tab === 'settings' && <Settings onSignOut={onSignOut} />}
+      </main>
+      <TabBar tab={tab} onSelect={selectTab} onRecord={() => setSheet({ kind: 'record' })} />
 
-      {!isToday && <div className="past-note">この画面から記録すると、{formatDayLabel(day)}の記録になります</div>}
-      {loadError && <div className="banner" role="status">{loadError}</div>}
-      {unsent > 0 && <div className="notice">未送信の記録が {unsent} 件あります（つながったら送ります）</div>}
-
-      {!shown ? (
-        <div className="notice">読み込み中…</div>
-      ) : (
-        <>
-          {kcal && <CalorieCard item={kcal} view={view} />}
-          <MacroCard items={macros} view={view} />
-          {money && <MoneyCard item={money} view={view} saving={current?.monthSaving ?? null} />}
-
-          <PresetGrid presets={current?.presets ?? []} items={items} onPick={pickPreset} onShowAll={() => setSheet({ kind: 'presets' })} />
-
-          <button type="button" className="primary" onClick={() => setScreen('capture')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
-              <circle cx="12" cy="13" r="3.5" />
-            </svg>
-            撮影して記録
-          </button>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'add' })}>
-              手入力で記録
-            </button>
-          </div>
-
-          {!isToday && noEntries && !current?.confirmedEmpty && (
-            <section className="card confirm-empty">
-              <p>この日は記録がありません。何も食べず、お金も使わなかった日なら、確定してください。確定すると今月の節約に入ります。</p>
-              <button type="button" className="secondary" onClick={() => confirmEmpty(true)} disabled={busy}>
-                この日は記録なしで確定
-              </button>
-            </section>
-          )}
-          {noEntries && current?.confirmedEmpty && (
-            <section className="card confirm-empty">
-              <p>✓ 記録なしで確定した日です。</p>
-              <button type="button" className="link-btn" onClick={() => confirmEmpty(false)} disabled={busy}>
-                確定を取り消す
-              </button>
-            </section>
-          )}
-
-          <EntryList entries={shown.entries} items={items} onEdit={(entry) => setSheet({ kind: 'edit', entry })} title={isToday ? '今日の記録' : `${formatDayLabel(day)}の記録`} />
-
-          {!isToday && otherMissing.length > 0 && (
-            <button type="button" className="link-btn" onClick={() => goTo(otherMissing[0])}>
-              ほかにも記録していない日があります（{otherMissing.map(formatDayLabel).join('、')}）›
-            </button>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button type="button" className="link-btn" style={{ color: 'var(--sub)' }} onClick={() => setScreen('settings')}>
-              ⚙ 設定
-            </button>
-          </div>
-        </>
-      )}
-
-      {sheet?.kind === 'presets' && current && (
-        <PresetSheet presets={current.presets} items={items} onPick={pickPreset} onClose={() => setSheet(null)} />
+      {sheet?.kind === 'record' && (
+        <RecordSheet
+          dayLabel={dayLabel}
+          presets={current?.presets ?? []}
+          items={items}
+          onPick={pickPreset}
+          onCapture={(mode) => {
+            setSheet(null);
+            setCapture(mode);
+          }}
+          onManual={() => setSheet({ kind: 'add' })}
+          onLookup={(q) => setSheet({ kind: 'add', label: q, autoLookup: true })}
+          onClose={() => setSheet(null)}
+        />
       )}
       {sheet?.kind === 'add' && (
         <EntryForm
           items={items}
+          initial={sheet.label ? { label: sheet.label, values: {} } : undefined}
+          autoLookup={sheet.autoLookup}
           title={isToday ? '手入力で記録' : `${formatDayLabel(day)}に手入力で記録`}
           submitLabel="記録する"
           allowSaveAsPreset
@@ -354,6 +332,6 @@ export function Home({ onSignOut }: { onSignOut: () => void }) {
         />
       )}
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
-    </main>
+    </div>
   );
 }

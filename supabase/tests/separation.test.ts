@@ -72,7 +72,7 @@ describe('shiori との分離', () => {
 });
 
 describe('SQLファイルを二重に実行したとき', () => {
-  it.each(['01_schema.sql', '02_gemini_usage.sql', '03_presets_ranked.sql', '04_capture.sql'])('%s は「実行済み」と分かるエラーで止まる', async (f) => {
+  it.each(['01_schema.sql', '02_gemini_usage.sql', '03_presets_ranked.sql', '04_capture.sql', '05_periods.sql'])('%s は「実行済み」と分かるエラーで止まる', async (f) => {
     await expect(db.exec(readSql(f))).rejects.toThrow(/すでに実行済みです/);
   });
 });

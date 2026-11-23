@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FAILURE_TEXT, type LookupResult } from '../lib/api';
 import type { Amounts } from '../lib/types';
 import { Sheet } from './Sheet';
@@ -39,6 +39,7 @@ export function EntryForm({
   onDelete,
   deleteLabel = 'この記録を削除する',
   onLookup,
+  autoLookup = false,
   onClose,
 }: {
   items: FieldTarget[];
@@ -52,6 +53,8 @@ export function EntryForm({
   deleteLabel?: string;
   /** 渡すと、名前の横に「調べる」ボタンを出す（名前で栄養成分を調べる） */
   onLookup?: (query: string) => Promise<LookupResult>;
+  /** 開いたらすぐ「調べる」（＋記録のシートで言葉を入れて調べたとき） */
+  autoLookup?: boolean;
   onClose: () => void;
 }) {
   const [label, setLabel] = useState(initial?.label ?? '');
@@ -103,6 +106,16 @@ export function EntryForm({
       setLooking(false);
     }
   }
+
+  const started = useRef(false);
+  useEffect(() => {
+    if (autoLookup && !started.current && label.trim()) {
+      started.current = true;
+      void lookup();
+    }
+    // 開いたときに1回だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const values: Amounts = {};
   for (const [k, v] of Object.entries(vals)) {

@@ -17,10 +17,10 @@ import {
   type Target,
   type WidgetTokenStatus,
 } from '../lib/api';
-import { fmt, presetSub, KIND_TAG } from '../lib/display';
+import { fmt, presetSub, KIND_TAG, PERIOD_WORD } from '../lib/display';
 import { queue } from '../lib/queueInstance';
 import { move, renumber } from '../lib/reorder';
-import type { SummaryItem } from '../lib/types';
+import type { Period, SummaryItem } from '../lib/types';
 import { EntryForm, type FieldTarget } from '../components/EntryForm';
 import { PasswordSheet } from '../components/PasswordSheet';
 import { Sheet } from '../components/Sheet';
@@ -52,10 +52,17 @@ function UpDown({ onUp, onDown, first, last, label }: { onUp: () => void; onDown
 // ターゲット（§3.2, §5.4）
 // ---------------------------------------------------------------------------
 
+const PERIOD_HINT: Record<Period, string> = {
+  day: '毎朝4:00に目標の量に戻ります。',
+  week: '月曜の朝4:00に戻ります。その週のあいだ、残りが減っていきます（ホームに「今週の残り」と「今日の量」を出します）。',
+  month: '毎月1日の朝4:00に戻ります。その月のあいだ、残りが減っていきます。',
+};
+
 function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | null; nextSort: number; onSaved: () => void; onClose: () => void }) {
   const [name, setName] = useState(target?.name ?? '');
   const [unit, setUnit] = useState(target?.unit ?? '');
   const [kind, setKind] = useState<'reach' | 'cap'>(target?.kind ?? 'cap');
+  const [period, setPeriod] = useState<Period>(target?.period ?? 'day');
   const [goal, setGoal] = useState(target ? String(target.daily_goal) : '');
   const [active, setActive] = useState(target?.active ?? true);
   const [error, setError] = useState('');
@@ -71,8 +78,8 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
     if (unit.length > 10) return setError('単位は10文字までです');
     setBusy(true);
     try {
-      if (target) await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, active });
-      else await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, sort: nextSort });
+      if (target) await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, active });
+      else await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, sort: nextSort });
       onSaved();
       onClose();
     } catch (err) {
@@ -88,9 +95,20 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
           名前
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         </label>
+        <div className="field">
+          目標の期間
+          <div className="seg" role="group" aria-label="目標の期間">
+            {(['day', 'week', 'month'] as const).map((p) => (
+              <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} style={{ flex: 1 }}>
+                {PERIOD_WORD[p].label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="hint">{PERIOD_HINT[period]}</p>
         <div className="grid-fields two">
           <label className="field">
-            1日の目標
+            {PERIOD_WORD[period].label}の目標
             <input type="number" inputMode="decimal" min="0" step="any" value={goal} onChange={(e) => setGoal(e.target.value)} />
           </label>
           <label className="field">
@@ -116,7 +134,7 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
           </label>
         )}
         {keyed && <p className="hint">「{KEYED[target!.key!]}」は写真の読み取りや節約の計算で使うので、単位は変えられません。</p>}
-        <p className="hint">目標を変えると今日から反映されます。過去の日の目標は変わりません。</p>
+        <p className="hint">目標や期間を変えると今日から反映されます。過去の日の目標は変わりません。</p>
         {error && <div className="error" role="alert">{error}</div>}
         <button className="primary" disabled={busy}>
           保存する
@@ -172,7 +190,7 @@ function TargetsSection({ onChanged }: { onChanged: () => void }) {
                   {!t.active && <span className="tag">使っていない</span>}
                 </span>
                 <span className="meta">
-                  1日 {t.key === 'money' ? `¥${fmt(t.daily_goal)}` : `${fmt(t.daily_goal)}${t.unit}`}
+                  {PERIOD_WORD[t.period].label} {t.key === 'money' ? `¥${fmt(t.daily_goal)}` : `${fmt(t.daily_goal)}${t.unit}`}
                 </span>
               </button>
               <UpDown label={t.name} first={i === 0} last={i === targets.length - 1} onUp={() => moveRow(i, -1)} onDown={() => moveRow(i, 1)} />
@@ -449,23 +467,19 @@ function AccountSection({ onSignOut }: { onSignOut: () => void }) {
 }
 
 /** 設定（§5.4） */
-export function Settings({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => void }) {
+export function Settings({ onSignOut }: { onSignOut: () => void }) {
   const [changed, setChanged] = useState(false);
   return (
-    <main className="screen">
-      <header className="header" style={{ minHeight: 44 }}>
-        <button type="button" className="link-btn" style={{ color: 'var(--ink)' }} onClick={onClose}>
-          ‹ 戻る
-        </button>
-        <strong style={{ fontSize: 16 }}>設定</strong>
-        <span style={{ width: 52 }} />
+    <div className="settings-screen">
+      <header className="day-header">
+        <h1>設定</h1>
       </header>
-      {changed && <div className="notice">ターゲットの変更は、戻ると今日の画面に反映されます</div>}
+      {changed && <div className="notice">ターゲットの変更は、ホームに戻ると反映されます</div>}
       <TargetsSection onChanged={() => setChanged(true)} />
       <PresetsSection />
       <WidgetSection />
       <UsageSection />
       <AccountSection onSignOut={onSignOut} />
-    </main>
+    </div>
   );
 }

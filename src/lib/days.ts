@@ -40,3 +40,27 @@ export function relativeLabel(day: string, today: string): string {
   if (d === 1) return '昨日';
   return `${d}日前`;
 }
+
+/** その日を含む週（月曜〜日曜） */
+export function weekRange(day: string): { from: string; to: string } {
+  const dow = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0=日
+  const from = addDays(day, -((dow + 6) % 7));
+  return { from, to: addDays(from, 6) };
+}
+
+/** その日を含む月（1日〜末日） */
+export function monthRange(day: string): { from: string; to: string } {
+  const [y, m] = day.split('-').map(Number);
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from, to: `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}` };
+}
+
+/** 期間の見出し：「11/17（月）〜 11/23（日）」「2026年11月」 */
+export function rangeLabel(view: 'week' | 'month', from: string, to: string): string {
+  if (view === 'month') {
+    const [y, m] = from.split('-').map(Number);
+    return `${y}年${m}月`;
+  }
+  return `${formatDayLabel(from)}〜 ${formatDayLabel(to)}`;
+}

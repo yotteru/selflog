@@ -1,7 +1,7 @@
 // Supabase（zanryo スキーマ）とのやりとり
 import { supabase } from './supabase';
 import type { Op, SendResult } from './queue';
-import type { Amounts, Entry, Preset, SummaryItem } from './types';
+import type { Amounts, Entry, Period, Preset, RangeRow, SummaryItem } from './types';
 
 export interface DayData {
   day: string;
@@ -57,6 +57,8 @@ export async function fetchDay(day: string): Promise<DayData> {
       goal: num(s.goal),
       used: num(s.used),
       remaining: num(s.remaining),
+      period: s.period ?? 'day',
+      day_used: s.day_used == null ? num(s.used) : num(s.day_used),
     })),
     entries: (check(entries) as Row[]).map(({ entry_values, ...e }) => ({
       ...e,
@@ -68,6 +70,12 @@ export async function fetchDay(day: string): Promise<DayData> {
     missingDays: (check(missing) as string[]).map(String).sort(),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/** 週・月の画面用：from〜to（62日まで）の日ごと・ターゲットごとの量と目標 */
+export async function fetchRange(from: string, to: string): Promise<RangeRow[]> {
+  const rows = check(await supabase.rpc('range_summary', { p_from: from, p_to: to })) as RangeRow[];
+  return rows.map((r) => ({ ...r, day_key: String(r.day_key), goal: num(r.goal), daily_goal: num(r.daily_goal), used: num(r.used) }));
 }
 
 /** 「この日は記録なしで確定」（§3.5）／取り消し */
@@ -178,23 +186,42 @@ export interface Target {
   name: string;
   unit: string;
   kind: 'reach' | 'cap';
+  /** 目標（period あたり） */
   daily_goal: number;
+  period: Period;
   sort: number;
   active: boolean;
 }
 
+// 05_periods.sql を流す前の DB には period 列がない。そのときは期間なし（1日）として読み書きする
+const noPeriodColumn = (e: { message: string } | null) => !!e && /period/.test(e.message);
+
 export async function listTargets(): Promise<Target[]> {
-  const r = await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,sort,active').order('sort').order('created_at');
-  return (check(r) as Target[]).map((t) => ({ ...t, daily_goal: num(t.daily_goal) }));
+  let r = await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,period,sort,active').order('sort').order('created_at');
+  if (noPeriodColumn(r.error)) {
+    r = (await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,sort,active').order('sort').order('created_at')) as typeof r;
+  }
+  return (check(r) as Target[]).map((t) => ({ ...t, daily_goal: num(t.daily_goal), period: t.period ?? 'day' }));
 }
 
-export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind' | 'daily_goal' | 'active'>): Promise<void> {
+function withoutPeriod<T extends { period: Period }>(t: T, error: { message: string } | null) {
+  if (t.period !== 'day') throw new Error('目標の期間を使うには、DB の準備（supabase/sql/05_periods.sql）が必要です');
+  void error;
+  const { period: _omit, ...rest } = t;
+  return rest;
+}
+
+export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'active'>): Promise<void> {
   const { id, ...fields } = t;
-  check(await supabase.from('targets').update(fields).eq('id', id));
+  let r = await supabase.from('targets').update(fields).eq('id', id);
+  if (noPeriodColumn(r.error)) r = await supabase.from('targets').update(withoutPeriod(fields, r.error)).eq('id', id);
+  check(r);
 }
 
-export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'sort'>): Promise<void> {
-  check(await supabase.from('targets').insert(t));
+export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'sort'>): Promise<void> {
+  let r = await supabase.from('targets').insert(t);
+  if (noPeriodColumn(r.error)) r = await supabase.from('targets').insert(withoutPeriod(t, r.error));
+  check(r);
 }
 
 /** 並べ替え：画面の順に sort を 10, 20, 30… と振り直す（変わった行だけ更新）。before は並べ替える前の値 */
