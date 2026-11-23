@@ -1,0 +1,6 @@
+# Supabase CLI の設定（`npx supabase` で使う。ローカル開発の設定はここに足していく）
+project_id = "zanryo"
+
+[functions.widget-summary]
+# Bearer に入るのはウィジェット用トークン（JWTではない）。照合は関数の中で行う。
+verify_jwt = false

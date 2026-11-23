@@ -1,1 +1,31 @@
-# selflog
+# 残量アプリ（selflog）
+
+1日の「残り」（カロリー・PFC・使えるお金）が、記録するたびに減っていく自分専用のアプリ。
+仕様は [docs/CLAUDE_CODE_INSTRUCTIONS.md](docs/CLAUDE_CODE_INSTRUCTIONS.md)。
+
+| 場所 | 中身 |
+|---|---|
+| `supabase/migrations/` | スキーマ・RLS・集計関数（`daily_summary` など） |
+| `supabase/functions/widget-summary/` | ウィジェット用 Edge Function |
+| `supabase/tests/` | SQLのテスト（PGliteでマイグレーションを流して確かめる） |
+| `src/lib/dayKey.ts` | 1日の区切り（朝4:00 JST）のユーティリティ |
+| `widget/zanryo.js` | Scriptable用ウィジェットスクリプト |
+| `docs/setup-step1-2.md` | ステップ1〜2のセットアップと動作確認の手順 |
+
+## テスト
+
+```bash
+npm install
+npm test
+```
+
+Supabaseに接続せずに、day_key の境界・RLS・残量/節約/記録漏れの集計・ウィジェット用トークンを確かめる。
+
+## 進み具合（仕様 §11）
+
+- [x] 1. スキーマ、RLS、day_key のユーティリティとテスト
+- [x] 2. `widget-summary` と Scriptable スクリプト（**実機でのロック画面確認待ち**）
+- [ ] 3. PWA 5.1（プリセット記録まで）
+- [ ] 4. `estimate-nutrition` と 5.2
+- [ ] 5. 5.3（過去の日・記録漏れのバナー）
+- [ ] 6. 5.4（設定）と仕上げ
