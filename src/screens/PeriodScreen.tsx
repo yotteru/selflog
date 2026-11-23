@@ -95,14 +95,6 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
     <div className="period-screen swipe-area" ref={swipe.ref} {...swipe.handlers}>
       <header className="day-header">
         <h1>期間</h1>
-        <div className="seg" role="group" aria-label="期間の単位">
-          <button type="button" aria-pressed={view === 'week'} onClick={() => changeView('week')}>
-            週
-          </button>
-          <button type="button" aria-pressed={view === 'month'} onClick={() => changeView('month')}>
-            月
-          </button>
-        </div>
       </header>
 
       <div className="range-nav">
@@ -117,16 +109,6 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
           ›
         </button>
       </div>
-
-      {targets.length > 0 && (
-        <div className="chips" role="group" aria-label="ターゲット">
-          {targets.map((t) => (
-            <button key={t.target_id} type="button" className="chip" aria-pressed={t.target_id === target?.target_id} onClick={() => setSelected(t.target_id)}>
-              {t.key === 'kcal' ? 'kcal' : t.key === 'money' ? 'お金' : t.key ? t.key.toUpperCase() : t.name}
-            </button>
-          ))}
-        </div>
-      )}
 
       {error && <div className="banner compact">{error}</div>}
       {!rows && !error && <div className="notice">読み込み中…</div>}
@@ -157,13 +139,6 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
             {target.period !== 'day' && ` · 1日あたりの目標 ${amount(target, result.days.find((d) => d.dailyGoal)?.dailyGoal ?? 0)}`}
           </span>
 
-          <div className="chart-switch seg small" role="group" aria-label="グラフの種類">
-            {CHARTS[view].map((c) => (
-              <button key={c} type="button" aria-pressed={chart === c} onClick={() => setChart(c)}>
-                {CHART_LABEL[c]}
-              </button>
-            ))}
-          </div>
           {chart === 'line' ? (
             <LineChart result={result} target={target} today={today} />
           ) : chart === 'calendar' && view === 'month' ? (
@@ -204,6 +179,37 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
             : '棒：青＝目標内（到達型は達成）· オレンジ＝超過 · 点線＝未記録 · 薄い青＝今日（途中）。タップでその日を開く'}
         </p>
       )}
+      <div className="bottom-controls">
+        {targets.length > 0 && (
+          <div className="chips" role="group" aria-label="ターゲット">
+            {targets.map((t) => (
+              <button key={t.target_id} type="button" className="chip" aria-pressed={t.target_id === target?.target_id} onClick={() => setSelected(t.target_id)}>
+                {t.key === 'kcal' ? 'kcal' : t.key === 'money' ? 'お金' : t.key ? t.key.toUpperCase() : t.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="control-row">
+          <div className="seg" role="group" aria-label="期間の単位">
+            <button type="button" aria-pressed={view === 'week'} onClick={() => changeView('week')}>
+              週
+            </button>
+            <button type="button" aria-pressed={view === 'month'} onClick={() => changeView('month')}>
+              月
+            </button>
+          </div>
+          {result && (
+            <div className="chart-switch seg small" role="group" aria-label="グラフの種類">
+              {CHARTS[view].map((c) => (
+                <button key={c} type="button" aria-pressed={chart === c} onClick={() => setChart(c)}>
+                  {CHART_LABEL[c]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

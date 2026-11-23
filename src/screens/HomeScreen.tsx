@@ -5,7 +5,7 @@ import { dayBounds, dayTitle } from '../lib/days';
 import { fmt } from '../lib/display';
 import type { SummaryItem } from '../lib/types';
 import { useSwipe } from '../lib/useSwipe';
-import { DayHeader } from '../components/DayHeader';
+import { DayNav, DayTitle } from '../components/DayHeader';
 import { MeterRow, RingCard } from '../components/Gauges';
 
 function useNow(): number {
@@ -86,30 +86,11 @@ export function HomeScreen({
         </button>
       )}
 
-      <DayHeader day={day} today={today} title={dayTitle(day, today, 'front')} onGo={onGo} />
+      <DayTitle day={day} today={today} title={dayTitle(day, today, 'front')} />
 
       {!isToday && (
         <div className="past-note compact">
           <span>＋で記録すると{formatDayLabel(day)}に入ります</span>
-          <button type="button" className="inline-link" onClick={() => onGo(today)}>
-            今日に戻る
-          </button>
-        </div>
-      )}
-      {canConfirmEmpty && (
-        <div className="confirm-inline">
-          <span>この日は記録がありません</span>
-          <button type="button" className="secondary small" onClick={() => onConfirmEmpty(true)} disabled={busy}>
-            記録なしで確定
-          </button>
-        </div>
-      )}
-      {confirmedEmpty && (
-        <div className="confirm-inline">
-          <span>✓ 記録なしで確定した日</span>
-          <button type="button" className="inline-link" onClick={() => onConfirmEmpty(false)} disabled={busy}>
-            取り消す
-          </button>
         </div>
       )}
       {loadError && <div className="banner compact" role="status">{loadError}</div>}
@@ -131,6 +112,26 @@ export function HomeScreen({
           </div>
         </>
       )}
+
+      <div className="bottom-controls">
+        {canConfirmEmpty && (
+          <div className="confirm-inline">
+            <span>この日は記録がありません</span>
+            <button type="button" className="secondary small" onClick={() => onConfirmEmpty(true)} disabled={busy}>
+              記録なしで確定
+            </button>
+          </div>
+        )}
+        {confirmedEmpty && (
+          <div className="confirm-inline">
+            <span>✓ 記録なしで確定した日</span>
+            <button type="button" className="inline-link" onClick={() => onConfirmEmpty(false)} disabled={busy}>
+              取り消す
+            </button>
+          </div>
+        )}
+        <DayNav day={day} today={today} onGo={onGo} />
+      </div>
     </div>
   );
 }
