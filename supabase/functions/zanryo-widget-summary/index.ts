@@ -1,9 +1,10 @@
-// GET /widget-summary   Authorization: Bearer <widget_token>
-// ウィジェット（Scriptable）向けに今日の残量を返す。仕様 §7。
+// GET /zanryo-widget-summary   Authorization: Bearer <widget_token>
+// 残量アプリ（zanryo）: ウィジェット（Scriptable）向けに今日の残量を返す。仕様 §7。
+// shiori と同じプロジェクトに置くので、関数名に zanryo- を付けて区別している。
 //
 // widget_token はJWTではないので、この関数はゲートウェイのJWT検証を切ってデプロイする
 // （supabase/config.toml の verify_jwt = false、または `--no-verify-jwt`）。
-// トークンの照合はDB側（public.widget_summary_by_token）でハッシュを比べて行う。
+// トークンの照合はDB側（zanryo.widget_summary_by_token）でハッシュを比べて行う。
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const headers = {
@@ -15,6 +16,7 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   auth: { persistSession: false, autoRefreshToken: false },
+  db: { schema: 'zanryo' },
 });
 
 Deno.serve(async (req) => {

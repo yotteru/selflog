@@ -2,7 +2,7 @@
  * 1日の区切り（§3.1）。
  * day_key = (記録時刻をJSTにした値 − 4時間) の日付。
  * JSTは夏時間がない固定のUTC+9なので、UTC+5時間ずらしてUTCの日付を取れば同じ値になる。
- * SQL側の public.day_key_of() と必ず同じ結果になること（supabase/tests で照合している）。
+ * SQL側の zanryo.day_key_of() と必ず同じ結果になること（supabase/tests で照合している）。
  */
 
 const HOUR = 3_600_000;

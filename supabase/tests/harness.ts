@@ -1,10 +1,12 @@
-// PGlite（WASM版Postgres）上で、Supabaseの auth スキーマとロールを最小限まねてマイグレーションを流す。
+// PGlite（WASM版Postgres）上で、Supabaseの auth スキーマとロールを最小限まねて supabase/sql/ を流す。
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MIGRATIONS = fileURLToPath(new URL('../migrations', import.meta.url));
+const SQL_DIR = fileURLToPath(new URL('../sql', import.meta.url));
+/** 入れるときに流すファイル（01〜09）。00 は確認用、10 以降は手作業用、99 は削除用 */
+const INSTALL = /^0[1-9]_.*\.sql$/;
 
 const SUPABASE_STUB = `
 create role anon nologin;
@@ -17,24 +19,29 @@ create function auth.uid() returns uuid language sql stable as $$
 $$;
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
-grant usage on schema public to anon, authenticated, service_role;
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+-- shiori 側のテーブルの代わり（public にあるものに触れないことを確かめる）
+create table public.shiori_notes (id serial primary key, body text);
 `;
 
 export async function freshDb() {
   const db = new PGlite();
   await db.exec(SUPABASE_STUB);
-  for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
-    await db.exec(readFileSync(join(MIGRATIONS, f), 'utf8'));
+  for (const f of readdirSync(SQL_DIR).filter((f) => INSTALL.test(f)).sort()) {
+    await db.exec(readFileSync(join(SQL_DIR, f), 'utf8'));
   }
   return db;
 }
 
 export type Db = PGlite;
 
-export async function createUser(db: Db, id: string) {
+export function readSql(name: string) {
+  return readFileSync(join(SQL_DIR, name), 'utf8');
+}
+
+/** auth.users にユーザーを作る。member=true なら残量アプリの利用者としても登録する */
+export async function createUser(db: Db, id: string, { member = true } = {}) {
   await db.query('insert into auth.users (id) values ($1)', [id]);
+  if (member) await db.query('insert into zanryo_private.members (user_id) values ($1)', [id]);
 }
 
 /** 指定ユーザーとして（authenticated ロールで）実行する */

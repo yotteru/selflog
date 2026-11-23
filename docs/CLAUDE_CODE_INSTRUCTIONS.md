@@ -216,7 +216,12 @@ day_status (            -- 日ごとの確定状態
 - [ ] ウィジェットの円形に出す項目の初期値（kcal・P・お金の3つでよいか）。
 - [ ] 記録直後にウィジェットを強制的に更新する方法（Scriptableを呼ぶショートカットなど）がどこまで使えるか。
 
-### 実装で決めたこと（ステップ1〜2。違っていれば指摘してください）
+### 実装で決めたこと（違っていれば指摘してください）
+- [ ] **shiori と同じ Supabase プロジェクトで運用する**（無料枠のプロジェクト数の上限のため）。混ざらないように：
+  - DBのものはすべて `zanryo`（テーブルとRPC）と `zanryo_private`（内部用）の2つのスキーマに入れる。`public` には何も作らない。§4 のテーブルは `zanryo.targets` のようになる。
+  - 使えるのは `zanryo_private.members` に登録したユーザーだけ（ログインは shiori と共通のため）。
+  - Edge Function は `zanryo-widget-summary` / `zanryo-estimate-nutrition`、シークレットは `ZANRYO_` で始まる名前にする（どちらもプロジェクト全体で共通の名前空間のため）。
+  - SQL は `supabase/sql/` を SQL Editor で番号順に流す（`supabase db push` は使わない）。消すときは `99_uninstall.sql`。
 - [ ] `targets` に `key`（`kcal` / `p` / `f` / `c` / `money`、利用者が追加したものは null）を追加した。Geminiの推定値をどのターゲットに入れるか、節約の計算にどのターゲットを使うかを決めるため。
 - [ ] `presets.values` は `presets.amounts` という名前にした（`values` はSQLの予約語のため）。
 - [ ] `entry_values` にも `user_id` を持たせた（RLSを単純にするため）。
@@ -226,17 +231,7 @@ day_status (            -- 日ごとの確定状態
 - [ ] ウィジェットのレスポンスの `updated_at` は「今日の記録が最後に変わった時刻」。取得時刻は `generated_at` として別に返す。
 - [ ] 記録は `add_entry` RPC で記録と値をまとめて保存する。クライアントが `p_id` を付けて送ると、オフラインのキューから再送しても二重にならない。
 - [ ] 円形ウィジェットの項目は、ウィジェットのパラメータ（`kcal` / `p` / `money` など）で選ぶ。省略時は `kcal`。
-- [ ] Geminiの1日の呼び出し回数は、DB（`private.gemini_usage`）で数える。Edge Functionは呼び出しごとに状態を持てないため。日の区切りは、無料枠の1日の上限がリセットされる太平洋時間の0時に合わせる（アプリの day_key とは別）。
-
-## 11. 進め方
-1. Supabaseのスキーマ、RLS、`day_key` のユーティリティとそのテスト
-2. `widget-summary` と Scriptableスクリプト → **実機でロック画面に出るかを最初に確認する**（一番リスクが高いため）
-3. PWAの 5.1（プリセット記録まで）
-4. `estimate-nutrition` と 5.2
-5. 5.3（過去の日・記録漏れのバナー）
-6. 5.4（設定）と仕上げ
-
-各ステップの終わりに動作確認の手順を書き、変更をコミットしてから次に進むこと。
+- [ ] Geminiの1日の呼び出し回数は、DB（`zanryo_private.gemini_usage`）で数える。Edge Functionは呼び出しごとに状態を持てないため。日の区切りは、無料枠の1日の上限がリセットされる太平洋時間の0時に合わせる（アプリの day_key とは別）。
 
 ## 11. 進め方
 1. Supabaseのスキーマ、RLS、`day_key` のユーティリティとそのテスト

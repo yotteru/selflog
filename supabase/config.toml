@@ -1,6 +1,9 @@
-# Supabase CLI の設定（`npx supabase` で使う。ローカル開発の設定はここに足していく）
-project_id = "zanryo"
+# Supabase CLI の設定。このリポジトリでは Edge Function のデプロイにだけ CLI を使う。
+# （SQL は supabase/sql/ を SQL Editor で流す。`supabase db push` は使わない）
+#
+# デプロイ先は shiori と同じプロジェクト。`supabase link` はせず、毎回 --project-ref を付けて実行する:
+#   npx supabase functions deploy zanryo-widget-summary --project-ref <project-ref>
 
-[functions.widget-summary]
+[functions.zanryo-widget-summary]
 # Bearer に入るのはウィジェット用トークン（JWTではない）。照合は関数の中で行う。
 verify_jwt = false

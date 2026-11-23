@@ -9,7 +9,7 @@
  * 使い方
  * 1. このファイルの中身をScriptableの新しいスクリプトに貼り付け、名前を「zanryo」にする。
  * 2. Scriptableアプリでこのスクリプトを実行 →「URLとトークンを設定」。
- *    - URL:   https://<プロジェクト>.supabase.co/functions/v1/widget-summary
+ *    - URL:   https://<プロジェクト>.supabase.co/functions/v1/zanryo-widget-summary
  *    - トークン: PWAの設定画面で発行したもの（zr_ で始まる）
  *    どちらもKeychainに保存し、スクリプトには書かない。
  * 3. ロック画面／ホーム画面にScriptableのウィジェットを置き、Scriptに「zanryo」を選ぶ。
@@ -334,8 +334,8 @@ function buildWidget(res, family) {
 async function setup() {
   const a = new Alert();
   a.title = '残量ウィジェットの設定';
-  a.message = 'URLは .../functions/v1/widget-summary、トークンはPWAの設定画面で発行したもの。';
-  a.addTextField('https://xxxx.supabase.co/functions/v1/widget-summary', Keychain.contains(KC_URL) ? Keychain.get(KC_URL) : '');
+  a.message = 'URLは .../functions/v1/zanryo-widget-summary、トークンはPWAの設定画面で発行したもの。';
+  a.addTextField('https://xxxx.supabase.co/functions/v1/zanryo-widget-summary', Keychain.contains(KC_URL) ? Keychain.get(KC_URL) : '');
   a.addSecureTextField('zr_...', '');
   a.addAction('保存');
   a.addCancelAction('キャンセル');
