@@ -88,7 +88,7 @@ describe('名前で調べる', () => {
   });
 });
 
-import { errorHint, quotaName } from '../functions/zanryo-estimate-nutrition/index';
+import { errorHint, quotaName, searchQueryCount } from '../functions/zanryo-estimate-nutrition/index';
 
 describe('429 の種類', () => {
   it('当たった上限の名前を取り出す', () => {
@@ -102,5 +102,9 @@ describe('429 の種類', () => {
     expect(errorHint([{ error: { status: 'RESOURCE_EXHAUSTED' } }])).toBe('RESOURCE_EXHAUSTED');
     expect(errorHint({ error: { message: 'a'.repeat(300) } })).toHaveLength(100);
     expect(errorHint(null)).toBe('unknown');
+  });
+  it('実際に検索した回数', () => {
+    expect(searchQueryCount({ candidates: [{ groundingMetadata: { webSearchQueries: ['吉野家 牛丼 並盛 カロリー'] } }] })).toBe(1);
+    expect(searchQueryCount({ candidates: [{}] })).toBe(0);
   });
 });

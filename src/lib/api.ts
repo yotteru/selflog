@@ -138,6 +138,8 @@ export type LookupResult =
       searched: boolean;
       /** 検索が使えなかった理由（手がかり） */
       searchError?: string;
+      /** Gemini が実際に検索した回数（0 なら検索せずに答えた） */
+      searchQueries?: number;
     }
   | Failure;
 

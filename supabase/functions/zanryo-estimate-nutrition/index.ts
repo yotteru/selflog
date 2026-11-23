@@ -19,7 +19,8 @@
 //   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 100（無料枠の1日の上限 500 より十分少なく）
 //   ZANRYO_ALLOWED_ORIGINS     … 省略時 https://yotteru.github.io,http://localhost:5173
 //   ZANRYO_GEMINI_SEARCH       … 省略時 on。off にすると「名前で調べる」で Google 検索を使わない
-//   ZANRYO_GEMINI_LOOKUP_MODEL … 「名前で調べる」の検索つきの呼び出しに使うモデル。省略時 gemini-2.5-flash-lite
+//   ZANRYO_GEMINI_LOOKUP_MODEL … 「名前で調べる」の検索つきの呼び出しに使うモデル。省略時 gemini-2.5-flash
+//                                （gemini-2.5-flash-lite は新しいプロジェクトでは使えない：no longer available to new users）
 //                                （無料枠の検索は Gemini 2 / 2.5 だけ 1日1,500回。Gemini 3 以降は0回。2026-11-23 に AI Studio で確認）
 //
 // 名前で調べる：まず Google 検索つきで呼ぶ。検索が使えない（無料枠の対象外など）と断られたら、
@@ -206,6 +207,7 @@ export const LOOKUP_SCHEMA = {
 export function lookupPrompt(query: string, withSearch: boolean): string {
   return (
     `次の食べ物・飲み物の、1人前の栄養成分を${withSearch ? '調べて' : '答えて'}ください：「${query}」\n` +
+    (withSearch ? '・知っている値でも、必ず Google 検索で公式の情報を確かめてから答える。\n' : '') +
     '・チェーン店や市販品なら、その会社の公式の栄養成分表の値を優先する。サイズの指定が無ければ標準（並・Mなど）にする。\n' +
     '・name は商品名（短く）、serving は量（例: 並盛 1杯, 1個）、kcal、p（たんぱく質g）、f（脂質g）、c（炭水化物g。無ければ糖質＋食物繊維）。\n' +
     '・price は日本での税込価格（円・整数）。分からなければ null。\n' +
@@ -269,6 +271,12 @@ export function quotaName(errorBody: unknown): string | null {
   const m = /"quota(?:Metric|Id)"\s*:\s*"([^"]+)"/.exec(text);
   if (!m) return null;
   return m[1].split('/').pop()!.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) || null;
+}
+
+/** Gemini が実際に Google 検索をした回数（検索の言葉の数）。0 なら検索せずに答えた */
+export function searchQueryCount(body: unknown): number {
+  const q = (body as { candidates?: { groundingMetadata?: { webSearchQueries?: unknown[] } }[] })?.candidates?.[0]?.groundingMetadata?.webSearchQueries;
+  return Array.isArray(q) ? q.length : 0;
 }
 
 /** 検索で見たページ（出典）。https のものだけ、3件まで */
@@ -357,7 +365,7 @@ async function handle(req: Request): Promise<Response> {
   const key = env('ZANRYO_GEMINI_API_KEY');
   if (!key) return fail(500, 'failed', 'no_api_key');
   const model = env('ZANRYO_GEMINI_MODEL') ?? 'gemini-flash-lite-latest';
-  const lookupModel = env('ZANRYO_GEMINI_LOOKUP_MODEL') ?? 'gemini-2.5-flash-lite';
+  const lookupModel = env('ZANRYO_GEMINI_LOOKUP_MODEL') ?? 'gemini-2.5-flash';
   const call = async (payload: unknown, useModel = model) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -399,7 +407,9 @@ async function handle(req: Request): Promise<Response> {
         );
         if (r.status === 200) {
           const draft = validateLookup(extractJsonLoose(r.body));
-          if (draft) return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true });
+          if (draft) {
+            return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true, searchQueries: searchQueryCount(r.body), model: lookupModel });
+          }
           return fail(200, 'failed', 'unreadable');
         }
         // 検索つきが失敗したら（検索が無料枠で使えない・検索の上限など）、検索なしで1回だけ呼ぶ。

@@ -145,9 +145,9 @@ export function EntryForm({
             </strong>
             {found.draft.confidence !== 'high' && <span className="hint strong">確かな値ではありません。確かめてから記録してください。</span>}
             {found.searched ? (
-              found.sources.length > 0 && (
+              found.sources.length > 0 ? (
                 <span className="hint">
-                  出典：
+                  Google 検索で調べました。出典：
                   {found.sources.map((s, i) => (
                     <span key={s.uri}>
                       {i > 0 && '、'}
@@ -157,6 +157,10 @@ export function EntryForm({
                     </span>
                   ))}
                 </span>
+              ) : (found.searchQueries ?? 0) > 0 ? (
+                <span className="hint">Google 検索で調べましたが、出典のページは返ってきませんでした。</span>
+              ) : (
+                <span className="hint">Gemini が検索せずに答えた値です（出典なし）。</span>
               )
             ) : (
               <span className="hint">
