@@ -17,8 +17,11 @@ export interface PeriodTarget {
 export interface PeriodDay {
   day: string;
   used: number;
+  /** その日の目標（休日の目標があれば、休日はそれ） */
   dailyGoal: number;
   status: DayStatus;
+  /** 休日か（土日祝・手で切り替えた日） */
+  off: boolean;
 }
 
 export interface PeriodResult {
@@ -36,7 +39,7 @@ export interface PeriodResult {
   days: PeriodDay[];
   /** 折れ線用：その日までの積み上げ（未来の日は null） */
   cumulative: (number | null)[];
-  /** 折れ線用：期間の終わりにちょうど目標になるペースの、その日までの量 */
+  /** 折れ線用：期間の終わりにちょうど目標になるペースの、その日の終わりまでの量（日ごとの目標の積み上げ。休日の目標が大きければ、休日に大きく増える） */
   pace: number[];
   counts: { ok: number; ng: number; missing: number };
 }
@@ -48,6 +51,11 @@ export function periodTargets(rows: RangeRow[]): PeriodTarget[] {
     map.set(r.target_id, { target_id: r.target_id, key: r.key, name: r.name, unit: r.unit, kind: r.kind, period: r.period, sort: r.sort });
   }
   return [...map.values()].sort((a, b) => a.sort - b.sort);
+}
+
+function isWeekend(day: string): boolean {
+  const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6;
 }
 
 function eachDay(from: string, to: string): string[] {
@@ -72,12 +80,13 @@ export function buildPeriod(rows: RangeRow[], targetId: string, view: PeriodView
 
   const days: PeriodDay[] = eachDay(from, to).map((day) => {
     const r = byDay.get(day);
-    if (day > today || !r) return { day, used: r?.used ?? 0, dailyGoal: r?.daily_goal ?? latest?.daily_goal ?? 0, status: day > today ? 'future' : 'missing' };
+    const off = r?.off ?? isWeekend(day);
+    if (day > today || !r) return { day, used: r?.used ?? 0, dailyGoal: r?.daily_goal ?? latest?.daily_goal ?? 0, status: day > today ? 'future' : 'missing', off };
     let status: DayStatus;
     if (day === today) status = 'today';
     else if (!r.confirmed) status = 'missing';
     else status = (r.kind === 'reach' ? r.used >= r.daily_goal : r.used <= r.daily_goal) ? 'ok' : 'ng';
-    return { day, used: r.used, dailyGoal: r.daily_goal, status };
+    return { day, used: r.used, dailyGoal: r.daily_goal, status, off };
   });
 
   const counted = days.filter((d) => d.status === 'ok' || d.status === 'ng' || (d.status === 'today' && byDay.get(d.day)?.confirmed));
@@ -89,7 +98,10 @@ export function buildPeriod(rows: RangeRow[], targetId: string, view: PeriodView
 
   let run = 0;
   const cumulative = days.map((d) => (d.status === 'future' ? null : (run += d.used)));
-  const pace = days.map((_, i) => (goal * (i + 1)) / days.length);
+  // 目安：日ごとの目標の積み上げを、期間の終わりでちょうど目標になるようにそろえる（目標がみな同じ日なら直線）
+  let acc = 0;
+  const goalSoFar = days.map((d) => (acc += d.dailyGoal));
+  const pace = days.map((_, i) => (acc > 0 ? (goal * goalSoFar[i]) / acc : (goal * (i + 1)) / days.length));
 
   return {
     total,

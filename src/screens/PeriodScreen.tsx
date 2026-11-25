@@ -89,6 +89,14 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
   const g = result && target ? gauge({ kind: target.kind, goal: result.goal, used: result.total }) : null;
   const done = !!g && target?.kind === 'reach' && g.pct === '';
   const over = !!g && g.over > 0;
+  // 平日と休日で目標が違うとき（休日の目標）は、その2つを出す
+  const dayGoals = useMemo(() => {
+    if (!result) return null;
+    const pick = (off: boolean) => result.days.find((d) => d.off === off)?.dailyGoal;
+    const weekday = pick(false);
+    const offGoal = pick(true);
+    return weekday != null && offGoal != null && weekday !== offGoal ? { weekday, off: offGoal } : null;
+  }, [result]);
 
 
   return (
@@ -137,6 +145,7 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
           <span className="caption">
             1日平均 {amount(target, result.average)}（{result.elapsedDays}日）
             {target.period !== 'day' && ` · 1日あたりの目標 ${amount(target, result.days.find((d) => d.dailyGoal)?.dailyGoal ?? 0)}`}
+            {target.period === 'day' && dayGoals && ` · 目標 平日 ${amount(target, dayGoals.weekday)}・休日 ${amount(target, dayGoals.off)}`}
           </span>
 
           {chart === 'line' ? (
@@ -176,7 +185,7 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
         <p className="hint">
           {chart === 'calendar'
             ? '○＝目標内（到達型は達成）· ×＝超過 · 点線＝未記録。タップでその日を開く（直近31日）'
-            : '棒：青＝目標内（到達型は達成）· オレンジ＝超過 · 点線＝未記録 · 薄い青＝今日（途中）。タップでその日を開く'}
+            : `棒：青＝目標内（到達型は達成）· オレンジ＝超過 · 点線＝未記録 · 薄い青＝今日（途中）${dayGoals ? ' · 黒い横線＝その日の目標（休日は休日の目標）' : ''}。タップでその日を開く`}
         </p>
       )}
       <div className="bottom-controls">

@@ -41,6 +41,8 @@ export interface RangeRow {
   /** その日だけの量 */
   used: number;
   confirmed: boolean;
+  /** その日が休日か（06_holidays.sql を流す前は無い） */
+  off?: boolean;
 }
 
 /** target_id → 量 */

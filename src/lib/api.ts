@@ -14,7 +14,23 @@ export interface DayData {
   confirmedEmpty: boolean;
   /** 記録漏れの日（直近7日、今日を除く。§3.5） */
   missingDays: string[];
+  /** その日が休日か（06_holidays.sql を流す前は null） */
+  dayInfo?: DayInfo | null;
   fetchedAt: string;
+}
+
+/** zanryo.day_info() */
+export interface DayInfo {
+  /** その日を休日として扱うか */
+  off: boolean;
+  /** 自動（土日祝）での判定 */
+  autoOff: boolean;
+  /** 手で切り替えた日か */
+  manual: boolean;
+  /** 祝日の名前（祝日でなければ null） */
+  holidayName: string | null;
+  /** 休日の目標を入れたターゲットがあるか（無ければ休日の表示を出さない） */
+  hasHolidayGoals: boolean;
 }
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -34,7 +50,7 @@ export async function bootstrap(): Promise<void> {
 }
 
 export async function fetchDay(day: string): Promise<DayData> {
-  const [summary, entries, presets, saving, status, missing] = await Promise.all([
+  const [summary, entries, presets, saving, status, missing, info] = await Promise.all([
     supabase.rpc('daily_summary', { p_day: day }),
     supabase
       .from('entries')
@@ -46,7 +62,11 @@ export async function fetchDay(day: string): Promise<DayData> {
     supabase.rpc('month_saving', { p_today: null }),
     supabase.from('day_status').select('confirmed_empty').eq('day_key', day).maybeSingle(),
     supabase.rpc('missing_days'),
+    supabase.rpc('day_info', { p_day: day }),
   ]);
+  // day_info は 06_holidays.sql を流す前は無い。そのときは休日の表示を出さないだけにする
+  type InfoRow = { off: boolean; auto_off: boolean; manual: boolean; holiday_name: string | null; has_holiday_goals: boolean };
+  const infoRow = info.error ? null : ((info.data as InfoRow[] | null)?.[0] ?? null);
 
   type Row = Omit<Entry, 'values'> & { entry_values: { target_id: string; amount: number }[] };
   const savingValue = check(saving);
@@ -68,6 +88,13 @@ export async function fetchDay(day: string): Promise<DayData> {
     monthSaving: savingValue == null ? null : num(savingValue),
     confirmedEmpty: Boolean((check(status) as { confirmed_empty: boolean } | null)?.confirmed_empty),
     missingDays: (check(missing) as string[]).map(String).sort(),
+    dayInfo: infoRow && {
+      off: Boolean(infoRow.off),
+      autoOff: Boolean(infoRow.auto_off),
+      manual: Boolean(infoRow.manual),
+      holidayName: infoRow.holiday_name,
+      hasHolidayGoals: Boolean(infoRow.has_holiday_goals),
+    },
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -75,7 +102,12 @@ export async function fetchDay(day: string): Promise<DayData> {
 /** 週・月の画面用：from〜to（62日まで）の日ごと・ターゲットごとの量と目標 */
 export async function fetchRange(from: string, to: string): Promise<RangeRow[]> {
   const rows = check(await supabase.rpc('range_summary', { p_from: from, p_to: to })) as RangeRow[];
-  return rows.map((r) => ({ ...r, day_key: String(r.day_key), goal: num(r.goal), daily_goal: num(r.daily_goal), used: num(r.used) }));
+  return rows.map((r) => ({ ...r, day_key: String(r.day_key), goal: num(r.goal), daily_goal: num(r.daily_goal), used: num(r.used), off: Boolean(r.off) }));
+}
+
+/** その日を休日（true）／平日（false）にする。null で自動（土日祝）に戻す */
+export async function setDayOff(day: string, off: boolean | null): Promise<void> {
+  check(await supabase.rpc('set_day_off', { p_day: day, p_off: off }));
 }
 
 /** 「この日は記録なしで確定」（§3.5）／取り消し */
@@ -188,39 +220,63 @@ export interface Target {
   kind: 'reach' | 'cap';
   /** 目標（period あたり） */
   daily_goal: number;
+  /** 休日の目標（null なら平日と同じ。period が day のときだけ使う） */
+  holiday_goal: number | null;
   period: Period;
   sort: number;
   active: boolean;
 }
 
-// 05_periods.sql を流す前の DB には period 列がない。そのときは期間なし（1日）として読み書きする
-const noPeriodColumn = (e: { message: string } | null) => !!e && /period/.test(e.message);
+// 古い DB には列が足りないことがある（05_periods.sql の前は period、06_holidays.sql の前は holiday_goal）。
+// そのときは、無い列を使わずに読み書きする（使おうとしたときだけ、流すファイルを知らせる）
+const missingColumn = (e: { message: string } | null, col: string) => !!e && e.message.includes(col);
 
 export async function listTargets(): Promise<Target[]> {
-  let r = await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,period,sort,active').order('sort').order('created_at');
-  if (noPeriodColumn(r.error)) {
-    r = (await supabase.from('targets').select('id,key,name,unit,kind,daily_goal,sort,active').order('sort').order('created_at')) as typeof r;
+  const cols = ['id', 'key', 'name', 'unit', 'kind', 'daily_goal', 'period', 'holiday_goal', 'sort', 'active'];
+  let r = await supabase.from('targets').select(cols.join(',')).order('sort').order('created_at');
+  for (const col of ['holiday_goal', 'period']) {
+    if (missingColumn(r.error, col)) {
+      cols.splice(cols.indexOf(col), 1);
+      r = await supabase.from('targets').select(cols.join(',')).order('sort').order('created_at');
+    }
   }
-  return (check(r) as Target[]).map((t) => ({ ...t, daily_goal: num(t.daily_goal), period: t.period ?? 'day' }));
+  return (check(r) as unknown as Target[]).map((t) => ({
+    ...t,
+    daily_goal: num(t.daily_goal),
+    holiday_goal: t.holiday_goal == null ? null : num(t.holiday_goal),
+    period: t.period ?? 'day',
+  }));
 }
 
-function withoutPeriod<T extends { period: Period }>(t: T, error: { message: string } | null) {
-  if (t.period !== 'day') throw new Error('目標の期間を使うには、DB の準備（supabase/sql/05_periods.sql）が必要です');
-  void error;
-  const { period: _omit, ...rest } = t;
-  return rest;
+/** 古い DB に無い列を外す（その列に意味のある値が入っているときは、準備が必要と知らせる） */
+function forOldDb<T extends { period: Period; holiday_goal: number | null }>(t: T, error: { message: string } | null) {
+  const out: Partial<T> = { ...t };
+  if (missingColumn(error, 'holiday_goal')) {
+    if (t.holiday_goal != null) throw new Error('休日の目標を使うには、DB の準備（supabase/sql/06_holidays.sql）が必要です');
+    delete out.holiday_goal;
+  }
+  if (missingColumn(error, 'period')) {
+    if (t.period !== 'day') throw new Error('目標の期間を使うには、DB の準備（supabase/sql/05_periods.sql）が必要です');
+    delete out.period;
+    delete out.holiday_goal;
+  }
+  return out;
 }
 
-export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'active'>): Promise<void> {
+export async function saveTarget(t: Pick<Target, 'id' | 'name' | 'unit' | 'kind' | 'daily_goal' | 'holiday_goal' | 'period' | 'active'>): Promise<void> {
   const { id, ...fields } = t;
   let r = await supabase.from('targets').update(fields).eq('id', id);
-  if (noPeriodColumn(r.error)) r = await supabase.from('targets').update(withoutPeriod(fields, r.error)).eq('id', id);
+  if (missingColumn(r.error, 'holiday_goal') || missingColumn(r.error, 'period')) {
+    r = await supabase.from('targets').update(forOldDb(fields, r.error)).eq('id', id);
+  }
   check(r);
 }
 
-export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'period' | 'sort'>): Promise<string> {
+export async function addTarget(t: Pick<Target, 'name' | 'unit' | 'kind' | 'daily_goal' | 'holiday_goal' | 'period' | 'sort'>): Promise<string> {
   let r = await supabase.from('targets').insert(t).select('id').single();
-  if (noPeriodColumn(r.error)) r = await supabase.from('targets').insert(withoutPeriod(t, r.error)).select('id').single();
+  if (missingColumn(r.error, 'holiday_goal') || missingColumn(r.error, 'period')) {
+    r = await supabase.from('targets').insert(forOldDb(t, r.error)).select('id').single();
+  }
   return (check(r) as { id: string }).id;
 }
 

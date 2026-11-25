@@ -519,3 +519,17 @@ body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
 .lc-key .k-pace { border-top: 2px dotted #b9b9b2; }
 .lc-diff { font-weight: 700; width: 100%; }
 .lc-sub { width: 100%; font-size: 11px; color: var(--sub, #5f5f5a); margin-top: -2px; }
+
+/* v1.1：平日／休日（ホームの日付の横。タップで切り替え） */
+.day-type {
+  flex-shrink: 0; border: 1px solid var(--line, #e7e7e2); background: #fff; color: var(--sub);
+  border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.day-type.off { background: #fff7ed; border-color: #fed7aa; color: var(--over); }
+.day-type:disabled { opacity: 0.5; }
+/* 期間のグラフ：休日の日付は色を変える */
+.bar-labels span.off, .lc-tick.off { color: var(--over); fill: var(--over); }
+/* 日によって目標が違うとき（休日の目標など）：棒ごとの目標の印 */
+.bar { position: relative; }
+.bar-goal { position: absolute; left: 8%; right: 8%; border-top: 2px solid var(--ink); pointer-events: none; }
+.bars.many .bar-goal { left: 0; right: 0; border-top-width: 1.5px; }

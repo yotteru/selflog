@@ -65,6 +65,7 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
   const [kind, setKind] = useState<'reach' | 'cap'>(target?.kind ?? 'cap');
   const [period, setPeriod] = useState<Period>(target?.period ?? 'day');
   const [goal, setGoal] = useState(target ? String(target.daily_goal) : '');
+  const [holidayGoal, setHolidayGoal] = useState(target?.holiday_goal == null ? '' : String(target.holiday_goal));
   const [active, setActive] = useState(target?.active ?? true);
   const [pace, setPace] = useState(target ? showPace({ target_id: target.id, key: target.key }) : defaultShowPace(null));
   const [error, setError] = useState('');
@@ -77,14 +78,16 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
     const g = Number(goal);
     if (!name.trim()) return setError('名前を入れてください');
     if (goal === '' || !Number.isFinite(g) || g < 0) return setError('目標は0以上の数で入れてください');
+    const hg = holidayGoal.trim() === '' || period !== 'day' ? null : Number(holidayGoal);
+    if (hg != null && (!Number.isFinite(hg) || hg < 0)) return setError('休日の目標は0以上の数で入れてください（同じなら空欄）');
     if (unit.length > 10) return setError('単位は10文字までです');
     setBusy(true);
     try {
       if (target) {
-        await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, active });
+        await saveTarget({ id: target.id, name: name.trim(), unit: unit.trim(), kind, daily_goal: g, holiday_goal: hg, period, active });
         setShowPace(target.id, pace);
       } else {
-        const id = await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, period, sort: nextSort });
+        const id = await addTarget({ name: name.trim(), unit: unit.trim(), kind, daily_goal: g, holiday_goal: hg, period, sort: nextSort });
         setShowPace(id, pace);
       }
       onSaved();
@@ -123,6 +126,23 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
             <input value={unit} onChange={(e) => setUnit(e.target.value)} maxLength={10} disabled={keyed} />
           </label>
         </div>
+        {period === 'day' && (
+          <>
+            <label className="field">
+              休日の目標（土日祝。平日と同じなら空欄）
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={holidayGoal}
+                placeholder={goal ? `空欄なら ${goal}` : '空欄なら平日と同じ'}
+                onChange={(e) => setHolidayGoal(e.target.value)}
+              />
+            </label>
+            <p className="hint">有給や休日出勤の日は、ホームの日付の横の「平日／休日」をタップして切り替えられます。</p>
+          </>
+        )}
         <div className="field">
           種類
           <div className="seg" role="group" aria-label="種類">
@@ -205,6 +225,7 @@ function TargetsSection({ onChanged }: { onChanged: () => void }) {
                 </span>
                 <span className="meta">
                   {PERIOD_WORD[t.period].label} {t.key === 'money' ? `¥${fmt(t.daily_goal)}` : `${fmt(t.daily_goal)}${t.unit}`}
+                  {t.period === 'day' && t.holiday_goal != null && `（休日 ${t.key === 'money' ? `¥${fmt(t.holiday_goal)}` : `${fmt(t.holiday_goal)}${t.unit}`}）`}
                 </span>
               </button>
               <UpDown label={t.name} first={i === 0} last={i === targets.length - 1} onUp={() => moveRow(i, -1)} onDown={() => moveRow(i, 1)} />

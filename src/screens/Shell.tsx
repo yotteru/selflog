@@ -6,6 +6,7 @@ import {
   lookupByName,
   saveCache,
   setConfirmedEmpty,
+  setDayOff,
   updateEntry,
   type DayData,
   type EstimateMode,
@@ -225,6 +226,28 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
     }
   }
 
+  async function toggleDayOff() {
+    const info = current?.dayInfo;
+    if (!info) return;
+    const nextOff = !info.off;
+    const where = isToday ? '今日' : formatDayLabel(day);
+    const msg = nextOff
+      ? `${where}を休日として扱いますか？\n休日の目標を入れたターゲット（お金など）は、休日の目標になります。`
+      : `${where}を平日として扱いますか？\n平日の目標に戻ります。`;
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try {
+      // 自動（土日祝）の判定と同じになるなら、手動の切り替えを消して自動に戻す
+      await setDayOff(day, nextOff === info.autoOff ? null : nextOff);
+      await refresh();
+      showToast(`${where}を${nextOff ? '休日' : '平日'}にしました`);
+    } catch (e) {
+      showToast(navigator.onLine ? (e as Error).message : 'オフラインのあいだは切り替えられません');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const unsent = ops.filter((o) => !o.sent).length;
   const noEntries = shown && !stale ? shown.entries.length === 0 : false;
   const dayLabel = isToday ? '今日' : formatDayLabel(day);
@@ -267,6 +290,8 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
             confirmedEmpty={noEntries && Boolean(current?.confirmedEmpty)}
             busy={busy}
             onConfirmEmpty={confirmEmpty}
+            dayInfo={current?.dayInfo}
+            onToggleOff={toggleDayOff}
           />
         )}
         {tab === 'entries' && (

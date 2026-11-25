@@ -40,13 +40,17 @@ export function BarChart({
   const max = Math.max(1, ...days.map((d) => d.used), ...days.map((d) => d.dailyGoal * 1.25));
   const many = days.length > 7;
   const goalAt = ((days.find((d) => d.dailyGoal)?.dailyGoal ?? 0) / max) * 100;
+  // 休日の目標などで、日によって目標が違うときは、棒ごとに目標の印を出す
+  const varies = new Set(days.map((d) => d.dailyGoal)).size > 1;
   const words = STATUS_WORD(target.kind === 'reach');
   return (
     <>
       <div className={`bars ${many ? 'many' : ''}`} style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }} aria-label="日ごとの量">
-        <div className="bars-goal" style={{ bottom: `${goalAt}%` }}>
-          <span>1日の目標</span>
-        </div>
+        {!varies && (
+          <div className="bars-goal" style={{ bottom: `${goalAt}%` }}>
+            <span>1日の目標</span>
+          </div>
+        )}
         {days.map((d) => (
           <button
             key={d.day}
@@ -62,12 +66,13 @@ export function BarChart({
                 background: target.kind === 'reach' && d.status === 'ng' ? '#93B4FF' : BAR_COLOR[d.status],
               }}
             />
+            {varies && <i className="bar-goal" style={{ bottom: `${(d.dailyGoal / max) * 100}%` }} aria-hidden="true" />}
           </button>
         ))}
       </div>
       <div className="bar-labels" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
         {days.map((d, i) => (
-          <span key={d.day}>{d.day === today ? (many ? '●' : '今日') : many ? (Number(d.day.slice(8)) % 5 === 0 || i === 0 ? Number(d.day.slice(8)) : '') : WEEKDAYS[i]}</span>
+          <span key={d.day} className={d.off ? 'off' : undefined}>{d.day === today ? (many ? '●' : '今日') : many ? (Number(d.day.slice(8)) % 5 === 0 || i === 0 ? Number(d.day.slice(8)) : '') : WEEKDAYS[i]}</span>
         ))}
       </div>
     </>
@@ -134,12 +139,12 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
         {/* 横軸の文字は、その日の点（日の終わり）の真下 */}
         {result.days.map((d, i) =>
           !many || (i + 1) % 5 === 0 || i === 0 ? (
-            <text key={d.day} x={px(i + 1)} y={H - 5} textAnchor="middle" className="lc-tick">
+            <text key={d.day} x={px(i + 1)} y={H - 5} textAnchor="middle" className={`lc-tick ${d.off ? 'off' : ''}`}>
               {many ? Number(d.day.slice(8)) : WEEKDAYS[i]}
             </text>
           ) : null,
         )}
-        <line x1={px(0)} x2={px(s.n)} y1={py(0)} y2={py(result.goal)} className="lc-pace" />
+        <polyline points={[0, ...result.pace].map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ')} fill="none" className="lc-pace" />
         <line x1={PAD.l} x2={W - PAD.r} y1={py(result.goal)} y2={py(result.goal)} className="lc-goal" />
         <text x={W - PAD.r} y={py(result.goal) - 5} textAnchor="end" className="lc-label">
           目標 {amount(target, result.goal)}

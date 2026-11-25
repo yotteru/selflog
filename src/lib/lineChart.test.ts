@@ -49,6 +49,34 @@ describe('折れ線の点の位置（日ごと）', () => {
   });
 });
 
+describe('平日と休日で目標が違うとき', () => {
+  // お金：平日1000円・休日3000円。11/23（月・祝）〜11/29（日）。休日は 23・28・29 → 週 3000×3 + 1000×4 = 13000
+  const money = (day: string, used: number, off: boolean): RangeRow => ({
+    day_key: day, target_id: 'm', key: 'money', name: 'お金', unit: '円', kind: 'cap', sort: 1,
+    period: 'day', goal: off ? 3000 : 1000, daily_goal: off ? 3000 : 1000, used, confirmed: true, off,
+  });
+  const days = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
+  const offs = [true, false, false, false, false, true, true];
+  const rows = days.map((d, i) => money(d, d <= '2026-11-25' ? 900 : 0, offs[i]));
+  const r = buildPeriod(rows, 'm', 'week', '2026-11-23', '2026-11-29', '2026-11-25');
+  it('週の目標は日ごとの目標の合計。まだ来ていない日も、その日の目標で数える', () => {
+    expect(r.goal).toBe(13000);
+    expect(r.days.map((d) => d.off)).toEqual(offs);
+  });
+  it('目安の線は日ごとの目標の積み上げ（休日で大きく増える）', () => {
+    expect(r.pace).toEqual([3000, 4000, 5000, 6000, 7000, 10000, 13000]);
+    const s = lineSeries(r, '2026-11-25');
+    expect(s.paceAt(1)).toBe(3000);
+    expect(s.paceAt(1.5)).toBe(3500);
+    expect(s.paceAt(7)).toBe(13000);
+    // 月曜（祝日）に 900 → 目安 3000 より 2100 少ない。火曜まで 1800 → 目安 4000 より 2200 少ない
+    expect(s.diffDone).toBe(4000 - 1800);
+  });
+  it('月曜（祝日）の 900 円は、休日の目標 3000 円と比べて目標内', () => {
+    expect(r.days[0].status).toBe('ok');
+  });
+});
+
 describe('縦軸の目盛り', () => {
   it('きりのよい数で、最大を超えるところまで', () => {
     expect(niceTicks(15400)).toEqual([0, 5000, 10000, 15000, 20000]);

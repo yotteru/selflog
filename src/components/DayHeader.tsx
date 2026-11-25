@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { addDays, formatDayLong } from '../lib/dayKey';
 import { dayBounds, relativeLabel } from '../lib/days';
 
 /** 画面上の見出し：タイトルと、選んでいる日の小さな表示（操作は下の DayNav で） */
-export function DayTitle({ day, today, title }: { day: string; today: string; title: string }) {
+export function DayTitle({ day, today, title, badge }: { day: string; today: string; title: string; badge?: ReactNode }) {
   const isToday = day === today;
   return (
     <header className="day-header">
@@ -13,6 +14,7 @@ export function DayTitle({ day, today, title }: { day: string; today: string; ti
         </span>
         <h1 className={isToday ? '' : 'past'}>{title}</h1>
       </div>
+      {badge}
     </header>
   );
 }

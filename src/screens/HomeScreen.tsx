@@ -4,6 +4,7 @@ import { pacePrefsVersion, paceFor, showPace, subscribePace } from '../lib/pace'
 import { dayBounds, dayTitle } from '../lib/days';
 import { fmt } from '../lib/display';
 import type { SummaryItem } from '../lib/types';
+import type { DayInfo } from '../lib/api';
 import { useSwipe } from '../lib/useSwipe';
 import { DayNav, DayTitle } from '../components/DayHeader';
 import { MeterRow, RingCard } from '../components/Gauges';
@@ -43,6 +44,8 @@ export function HomeScreen({
   confirmedEmpty,
   busy,
   onConfirmEmpty,
+  dayInfo,
+  onToggleOff,
 }: {
   day: string;
   today: string;
@@ -61,6 +64,9 @@ export function HomeScreen({
   confirmedEmpty: boolean;
   busy: boolean;
   onConfirmEmpty: (confirmed: boolean) => void;
+  /** その日が休日か（休日の目標を入れたターゲットがあるときだけ表示する） */
+  dayInfo?: DayInfo | null;
+  onToggleOff?: () => void;
 }) {
   const { min } = dayBounds(today);
   const swipe = useSwipe({
@@ -86,7 +92,25 @@ export function HomeScreen({
         </button>
       )}
 
-      <DayTitle day={day} today={today} title={dayTitle(day, today, 'front')} />
+      <DayTitle
+        day={day}
+        today={today}
+        title={dayTitle(day, today, 'front')}
+        badge={
+          dayInfo?.hasHolidayGoals && !stale ? (
+            <button
+              type="button"
+              className={`day-type ${dayInfo.off ? 'off' : ''}`}
+              onClick={onToggleOff}
+              disabled={busy}
+              aria-label={`${dayInfo.off ? '休日' : '平日'}の目標（タップで切り替え）`}
+            >
+              {dayInfo.off ? (dayInfo.manual ? '休日（手動）' : dayInfo.holidayName ?? '休日') : dayInfo.manual ? '平日（手動）' : '平日'}
+              <span aria-hidden="true"> ⇄</span>
+            </button>
+          ) : undefined
+        }
+      />
 
       {!isToday && (
         <div className="past-note compact">

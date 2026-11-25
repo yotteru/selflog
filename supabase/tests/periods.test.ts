@@ -130,12 +130,13 @@ describe('range_summary（週・月の画面用）', () => {
     expect(rows.find((r) => r.day_key === '2026-11-04')).toMatchObject({ confirmed: true });
   });
 
-  it('今日より先の日は返さない。62日を超える範囲や、利用者でない人は断る', async () => {
+  it('今日より先の日は目標だけ返す（06 から）。62日を超える範囲や、利用者でない人は断る', async () => {
     const today = (await one<{ d: string }>('select zanryo.today_key()::text d'))!.d;
     const rows = await asUser(db, A, () =>
-      q<{ day_key: string }>(`select distinct day_key::text from zanryo.range_summary($1::date - 2, $1::date + 5)`, [today]),
+      q<{ day_key: string; used: string; confirmed: boolean }>(`select day_key::text, used::text, confirmed from zanryo.range_summary($1::date - 2, $1::date + 5)`, [today]),
     );
-    expect(rows.map((r) => r.day_key).sort().at(-1)).toBe(today);
+    expect(new Set(rows.map((r) => r.day_key)).size).toBe(8);
+    expect(rows.filter((r) => r.day_key > today).every((r) => r.used === '0' && !r.confirmed)).toBe(true);
     await expect(asUser(db, A, () => q(`select * from zanryo.range_summary('2026-01-01', '2026-06-01')`))).rejects.toThrow(/62日/);
     await expect(asUser(db, OTHER, () => q(`select * from zanryo.range_summary('2026-11-01', '2026-11-07')`))).rejects.toThrow(/利用者として登録されていません/);
     await expect(asRole(db, 'anon', () => q(`select * from zanryo.range_summary('2026-11-01', '2026-11-07')`))).rejects.toThrow(/permission denied/);
