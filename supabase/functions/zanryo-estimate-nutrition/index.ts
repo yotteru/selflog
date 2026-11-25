@@ -316,7 +316,7 @@ export function extractSources(body: unknown): Source[] {
 
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Promise<Response>): void } | undefined;
 
-const MAX_IMAGE_CHARS = 2_500_000; // base64 で約1.8MB（長辺1280pxのJPEGなら十分）
+const MAX_IMAGE_CHARS = 2_500_000; // base64 で約1.8MB（アプリは長辺2048px・約250万画素の JPEG を、230万字以内に収めて送る）
 
 async function handle(req: Request): Promise<Response> {
   const env = (k: string) => Deno!.env.get(k);

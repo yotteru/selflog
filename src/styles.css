@@ -115,16 +115,24 @@ button { cursor: pointer; }
   height: 168px; border-radius: 18px; background: #e3e3dd; border: 1px dashed #b9b9b2; color: var(--sub);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; width: 100%;
 }
-.cropper { position: relative; overflow: hidden; border-radius: 14px; touch-action: none; user-select: none; -webkit-user-select: none; background: #000; }
-.cropper img { display: block; width: 100%; height: auto; max-height: 60dvh; object-fit: contain; pointer-events: none; }
+.cropper { flex-shrink: 0; display: flex; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* 写真と同じ縦横比の台。枠の位置（%）は、この台＝写真そのものに対する割合 */
+.crop-stage { position: relative; overflow: hidden; border-radius: 12px; background: #000; touch-action: none; }
+.crop-stage img { display: block; width: 100%; height: 100%; pointer-events: none; }
 .crop-rect {
   position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
   cursor: move; touch-action: none;
 }
+/* 四すみの丸（写真の端でも欠けないよう枠の内側に置き、指で押しやすいよう見た目より広くさわれる） */
 .crop-handle {
-  position: absolute; right: -14px; bottom: -14px; width: 28px; height: 28px; border-radius: 999px;
+  position: absolute; width: 22px; height: 22px; border-radius: 999px;
   background: #fff; border: 2px solid var(--accent); touch-action: none;
 }
+.crop-handle::after { content: ''; position: absolute; inset: -12px; }
+.crop-handle.nw { left: -2px; top: -2px; }
+.crop-handle.ne { right: -2px; top: -2px; }
+.crop-handle.sw { left: -2px; bottom: -2px; }
+.crop-handle.se { right: -2px; bottom: -2px; }
 .privacy { font-size: 12px; color: var(--sub); line-height: 1.6; margin: 0; }
 .thumb { max-height: 140px; max-width: 100%; align-self: center; border-radius: 10px; }
 .caption { font-size: 13px; color: var(--sub); }
