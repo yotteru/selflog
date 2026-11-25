@@ -1,7 +1,6 @@
 // 期間の画面のグラフ：棒・折れ線・カレンダー
 import { diffDays } from '../lib/dayKey';
 import { lineSeries, niceTicks } from '../lib/lineChart';
-import { dayElapsed } from '../lib/pace';
 import { COLORS, fmt, isMoney } from '../lib/display';
 import type { DayStatus, PeriodResult, PeriodTarget } from '../lib/period';
 
@@ -87,12 +86,12 @@ function tickLabel(v: number): string {
 
 /**
  * 積み上げの折れ線：期間の始まり（0）からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
- * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は各日の終わり、今日はいまの時刻の位置に置くので、
- * 点が斜線より上なら目安より多い・下なら少ない。上限型は目標を超えたらオレンジ。
+ * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は日ごとに1つ、その日の終わりの位置に置くので、
+ * 点が斜線より上なら目安より多い・下なら少ない。今日の点は途中なので白抜き。上限型は目標を超えたらオレンジ。
  * 文言の主な比較は「昨日まで」（今日の途中は食事などでいったん目安を超えやすいため、下に小さく添える）。
  */
 export function LineChart({ result, target, today }: { result: PeriodResult; target: PeriodTarget; today: string }) {
-  const s = lineSeries(result, today, dayElapsed(Date.now()));
+  const s = lineSeries(result, today);
   const maxY = Math.max(result.goal, ...s.points.map((p) => p.y), 1) * 1.04;
   const ticks = niceTicks(maxY);
   const top = ticks[ticks.length - 1] || 1;
@@ -107,11 +106,11 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
   // 比べ方：主は「昨日まで（終わった日）」。今日の途中は食事などでいったん目安を超えやすいので、下に小さく添える
   const tone = (v: number) => ((reach ? v > 0 : v < 0) ? 'tone-over' : 'tone-accent');
   const word = (v: number) => (reach ? (v > 0 ? '遅れ' : '先行') : v >= 0 ? '少ない' : '多い');
-  const inProgress = s.nowX != null;
+  const inProgress = s.todayX != null;
   const main =
     inProgress && s.diffDone != null
       ? { label: '昨日まで', v: s.diffDone }
-      : { label: inProgress ? 'いま' : '期間の終わり', v: s.diff };
+      : { label: inProgress ? '今日の終わり' : '期間の終わり', v: s.diff };
   const sub = inProgress && s.diffDone != null ? { v: s.diff } : null;
 
   return (
@@ -145,19 +144,14 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
         <text x={W - PAD.r} y={py(result.goal) - 5} textAnchor="end" className="lc-label">
           目標 {amount(target, result.goal)}
         </text>
-        {s.nowX != null && (
-          <g>
-            <line x1={px(s.nowX)} x2={px(s.nowX)} y1={PAD.t} y2={py(0)} className="lc-now" />
-            <text x={px(s.nowX)} y={PAD.t - 6} textAnchor="middle" className="lc-tick">
-              いま
-            </text>
-          </g>
-        )}
         <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {s.points.slice(1).map((p, i) => (
-          <circle key={i} cx={px(p.x)} cy={py(p.y)} r={many ? 2 : 3} fill={color} />
-        ))}
-        {s.nowX != null && <circle cx={px(last.x)} cy={py(last.y)} r="5" fill="#fff" stroke={color} strokeWidth="2.5" />}
+        {s.points.slice(1).map((p, i) =>
+          p.x === s.todayX ? (
+            <circle key={i} cx={px(p.x)} cy={py(p.y)} r={many ? 3.5 : 4.5} fill="#fff" stroke={color} strokeWidth="2.5" />
+          ) : (
+            <circle key={i} cx={px(p.x)} cy={py(p.y)} r={many ? 2 : 3} fill={color} />
+          ),
+        )}
       </svg>
       <figcaption className="caption">
         <span className="lc-key">
@@ -175,7 +169,7 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
         )}
         {sub && (
           <span className="lc-sub">
-            今日の分を入れると（いま）目安より {amount(target, Math.abs(sub.v))} {word(sub.v)}
+            今日の分を入れると、今日の終わりの目安より {amount(target, Math.abs(sub.v))} {word(sub.v)}
           </span>
         )}
       </figcaption>

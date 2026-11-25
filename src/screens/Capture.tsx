@@ -233,7 +233,6 @@ export function Capture({
     }
   }
 
-  const hint = MODES.find((m) => m.id === mode)!.hint;
 
   return (
     <main className="screen">
@@ -286,10 +285,6 @@ export function Capture({
       {phase === 'crop' && img && (
         <>
           <Cropper src={img.src} naturalW={img.naturalWidth} naturalH={img.naturalHeight} rect={rect} onChange={setRect} />
-          <p className="privacy">
-            {hint}。枠の中だけが Google（Gemini）に送られます。無料枠では、送った画像が Google の製品改善に使われ、人が見ることがあります。
-            人の顔や部屋の中、個人情報が枠に入らないようにしてください。
-          </p>
           <button type="button" className="primary" onClick={run}>
             この範囲で読み取る
           </button>

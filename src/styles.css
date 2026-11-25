@@ -511,7 +511,6 @@ body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
 .lc-grid { stroke: #ececE7; stroke-width: 1; }
 .lc-tick { font-size: 9.5px; fill: var(--sub); font-family: inherit; font-variant-numeric: tabular-nums; }
 .lc-unit { font-size: 9px; fill: var(--sub); font-family: inherit; }
-.lc-now { stroke: #b9b9b2; stroke-width: 1; stroke-dasharray: 2 2; }
 .lc-vgrid { stroke: #f1f1ec; stroke-width: 1; }
 .line-chart figcaption { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .lc-key { display: inline-flex; align-items: center; gap: 4px; }

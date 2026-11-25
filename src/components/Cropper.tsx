@@ -42,11 +42,11 @@ export function Cropper({
   const drag = useRef<{ kind: 'move' | Corner; px: number; py: number; start: CropRect } | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
 
-  // 使える幅と高さ（画面の6割まで）に、写真の縦横比のまま収める
+  // 使える幅と高さ（画面の高さの64%まで）に、写真の縦横比のまま収める
   useLayoutEffect(() => {
     const el = outer.current;
     if (!el) return;
-    const measure = () => setSize(fitSize(naturalW, naturalH, el.clientWidth, Math.round(window.innerHeight * 0.58)));
+    const measure = () => setSize(fitSize(naturalW, naturalH, el.clientWidth, Math.round(window.innerHeight * 0.64)));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
