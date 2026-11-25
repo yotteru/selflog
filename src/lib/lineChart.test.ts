@@ -31,6 +31,17 @@ describe('折れ線の点の位置', () => {
     expect(s.paceAt(2.5)).toBe(5000);
     expect(s.diff).toBe(150);
   });
+  it('主な比較は昨日まで（終わった日）。今日の朝ごはんで一時的に目安を超えても、昨日までが少なければ「少ない」', () => {
+    // 水曜の朝7時ごろ（1日の1/8が過ぎた）に、朝ごはん 900kcal を記録
+    const morning = buildPeriod([row('2026-11-23', 1900), row('2026-11-24', 1950), row('2026-11-25', 900)], 'k', 'week', '2026-11-23', '2026-11-29', '2026-11-25');
+    const s = lineSeries(morning, '2026-11-25', 0.125);
+    expect(s.diffDone).toBe(4000 - 3850); // 昨日までは 150 少ない
+    expect(s.diff).toBeLessThan(0); // 今日の分を入れると、いまは一時的に多い
+  });
+  it('初日（終わった日がまだ無い）は昨日までの比較なし', () => {
+    const first = buildPeriod([row('2026-11-23', 500)], 'k', 'week', '2026-11-23', '2026-11-29', '2026-11-23');
+    expect(lineSeries(first, '2026-11-23', 0.5).diffDone).toBeNull();
+  });
   it('期間の終わりで目安はちょうど目標', () => {
     const s = lineSeries(result, '2026-11-25', 0.5);
     expect(s.paceAt(7)).toBe(14000);
@@ -41,6 +52,7 @@ describe('折れ線の点の位置', () => {
     expect(s.nowX).toBeNull();
     expect(s.points.at(-1)).toEqual({ x: 7, y: 2500 });
     expect(s.diff).toBe(14000 - 2500);
+    expect(s.diffDone).toBe(14000 - 2500);
   });
 });
 

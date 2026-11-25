@@ -89,6 +89,7 @@ function tickLabel(v: number): string {
  * 積み上げの折れ線：期間の始まり（0）からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
  * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は各日の終わり、今日はいまの時刻の位置に置くので、
  * 点が斜線より上なら目安より多い・下なら少ない。上限型は目標を超えたらオレンジ。
+ * 文言の主な比較は「昨日まで」（今日の途中は食事などでいったん目安を超えやすいため、下に小さく添える）。
  */
 export function LineChart({ result, target, today }: { result: PeriodResult; target: PeriodTarget; today: string }) {
   const s = lineSeries(result, today, dayElapsed(Date.now()));
@@ -103,6 +104,15 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
   const color = overGoal ? COLORS.over : COLORS.accent;
   const many = s.n > 7;
   const reach = target.kind === 'reach';
+  // 比べ方：主は「昨日まで（終わった日）」。今日の途中は食事などでいったん目安を超えやすいので、下に小さく添える
+  const tone = (v: number) => ((reach ? v > 0 : v < 0) ? 'tone-over' : 'tone-accent');
+  const word = (v: number) => (reach ? (v > 0 ? '遅れ' : '先行') : v >= 0 ? '少ない' : '多い');
+  const inProgress = s.nowX != null;
+  const main =
+    inProgress && s.diffDone != null
+      ? { label: '昨日まで', v: s.diffDone }
+      : { label: inProgress ? 'いま' : '期間の終わり', v: s.diff };
+  const sub = inProgress && s.diffDone != null ? { v: s.diff } : null;
 
   return (
     <figure className="line-chart">
@@ -118,9 +128,14 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
         <text x={PAD.l - 6} y={PAD.t - 7} textAnchor="end" className="lc-unit">
           {isMoney(target) ? '円' : target.unit}
         </text>
+        {/* 日の区切り（各日の終わり）に薄い縦線。点はこの線の上に乗る */}
+        {result.days.map((d, i) => (
+          <line key={`v${d.day}`} x1={px(i + 1)} x2={px(i + 1)} y1={PAD.t} y2={py(0)} className="lc-vgrid" />
+        ))}
+        {/* 横軸の文字は、その日の点（日の終わり）の真下 */}
         {result.days.map((d, i) =>
           !many || (i + 1) % 5 === 0 || i === 0 ? (
-            <text key={d.day} x={px(i + 0.5)} y={H - 5} textAnchor="middle" className="lc-tick">
+            <text key={d.day} x={px(i + 1)} y={H - 5} textAnchor="middle" className="lc-tick">
               {many ? Number(d.day.slice(8)) : WEEKDAYS[i]}
             </text>
           ) : null,
@@ -153,10 +168,16 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
           <i className="k-pace" />
           目安（終わりにちょうど目標）
         </span>
-        <span className={`lc-diff ${(reach ? s.diff > 0 : s.diff < 0) ? 'tone-over' : 'tone-accent'}`}>
-          {s.nowX != null ? 'いま' : '期間の終わり'}の目安より {amount(target, Math.abs(s.diff))}{' '}
-          {reach ? (s.diff > 0 ? '遅れ' : '先行') : s.diff >= 0 ? '少ない' : '多い'}
-        </span>
+        {main && (
+          <span className={`lc-diff ${tone(main.v)}`}>
+            {main.label}の目安より {amount(target, Math.abs(main.v))} {word(main.v)}
+          </span>
+        )}
+        {sub && (
+          <span className="lc-sub">
+            今日の分を入れると（いま）目安より {amount(target, Math.abs(sub.v))} {word(sub.v)}
+          </span>
+        )}
       </figcaption>
     </figure>
   );

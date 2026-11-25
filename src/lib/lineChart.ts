@@ -22,6 +22,11 @@ export interface LineSeries {
   paceAt: (x: number) => number;
   /** いま（または期間の終わり）の目安との差。+ なら目安より少ない */
   diff: number;
+  /**
+   * 終わった日（昨日まで）の目安との差。+ なら目安より少ない。終わった日がまだ無ければ null。
+   * 今日の途中は、食事のようにまとめて増えるものだと一時的に目安を上下するので、主な比較はこちらにする
+   */
+  diffDone: number | null;
 }
 
 export function lineSeries(result: PeriodResult, today: string, todayElapsed: number): LineSeries {
@@ -40,7 +45,8 @@ export function lineSeries(result: PeriodResult, today: string, todayElapsed: nu
     }
   });
   const last = points[points.length - 1];
-  return { points, n, nowX, paceAt, diff: paceAt(last.x) - last.y };
+  const done = [...points].reverse().find((p) => p.x > 0 && Number.isInteger(p.x) && (nowX == null || p.x <= Math.floor(nowX)));
+  return { points, n, nowX, paceAt, diff: paceAt(last.x) - last.y, diffDone: done ? paceAt(done.x) - done.y : null };
 }
 
 /** 縦軸のきりのよい目盛り（0 を含めて4〜6本） */
