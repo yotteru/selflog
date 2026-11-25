@@ -1,5 +1,7 @@
 // 期間の画面のグラフ：棒・折れ線・カレンダー
 import { diffDays } from '../lib/dayKey';
+import { lineSeries, niceTicks } from '../lib/lineChart';
+import { dayElapsed } from '../lib/pace';
 import { COLORS, fmt, isMoney } from '../lib/display';
 import type { DayStatus, PeriodResult, PeriodTarget } from '../lib/period';
 
@@ -73,51 +75,88 @@ export function BarChart({
   );
 }
 
-const W = 320;
-const H = 150;
-const PAD = { l: 4, r: 4, t: 14, b: 4 };
+const W = 340;
+const H = 190;
+const PAD = { l: 46, r: 8, t: 18, b: 20 };
+
+/** 縦軸の数字：大きい数は「1.5万」のように短く */
+function tickLabel(v: number): string {
+  if (v >= 10000) return `${Math.round((v / 10000) * 10) / 10}万`;
+  return fmt(v);
+}
 
 /**
- * 積み上げの折れ線：1日目からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
- * 薄い斜線は「期間の終わりにちょうど目標になるペース」。上限型は線を超えたらオレンジ。
+ * 積み上げの折れ線：期間の始まり（0）からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
+ * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は各日の終わり、今日はいまの時刻の位置に置くので、
+ * 点が斜線より上なら目安より多い・下なら少ない。上限型は目標を超えたらオレンジ。
  */
 export function LineChart({ result, target, today }: { result: PeriodResult; target: PeriodTarget; today: string }) {
-  const n = result.days.length;
-  const max = Math.max(result.goal, result.total, 1) * 1.08;
-  const x = (i: number) => PAD.l + ((W - PAD.l - PAD.r) * (i + 0.5)) / n;
-  const y = (v: number) => PAD.t + (H - PAD.t - PAD.b) * (1 - v / max);
-  const pts = result.cumulative.map((v, i) => (v == null ? null : ([x(i), y(v)] as const))).filter((p): p is readonly [number, number] => !!p);
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-  const pace = `M${x(-0.5).toFixed(1)},${y(0).toFixed(1)} L${x(n - 0.5).toFixed(1)},${y(result.goal).toFixed(1)}`;
-  const last = pts.at(-1);
-  const overGoal = target.kind === 'cap' && result.total > result.goal;
+  const s = lineSeries(result, today, dayElapsed(Date.now()));
+  const maxY = Math.max(result.goal, ...s.points.map((p) => p.y), 1) * 1.04;
+  const ticks = niceTicks(maxY);
+  const top = ticks[ticks.length - 1] || 1;
+  const px = (x: number) => PAD.l + ((W - PAD.l - PAD.r) * x) / s.n;
+  const py = (v: number) => PAD.t + (H - PAD.t - PAD.b) * (1 - v / top);
+  const path = s.points.map((p, i) => `${i ? 'L' : 'M'}${px(p.x).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ');
+  const last = s.points[s.points.length - 1];
+  const overGoal = target.kind === 'cap' && last.y > result.goal;
   const color = overGoal ? COLORS.over : COLORS.accent;
-  const todayIndex = result.days.findIndex((d) => d.day === today);
-  // 今日の時点での目安（ペースの線の上の値）
-  const paceNow = todayIndex >= 0 ? result.pace[todayIndex] : null;
-  const ahead = paceNow == null ? null : paceNow - result.total; // 上限型：+なら目安より少ない
+  const many = s.n > 7;
+  const reach = target.kind === 'reach';
 
   return (
     <figure className="line-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${target.name}の積み上げ ${amount(target, result.total)}（目標 ${amount(target, result.goal)}）`}>
-        <line x1={PAD.l} x2={W - PAD.r} y1={y(result.goal)} y2={y(result.goal)} className="lc-goal" />
-        <text x={W - PAD.r} y={y(result.goal) - 4} textAnchor="end" className="lc-label">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${target.name}の積み上げ ${amount(target, last.y)}（目標 ${amount(target, result.goal)}）`}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={py(t)} y2={py(t)} className="lc-grid" />
+            <text x={PAD.l - 6} y={py(t) + 3.5} textAnchor="end" className="lc-tick">
+              {tickLabel(t)}
+            </text>
+          </g>
+        ))}
+        <text x={PAD.l - 6} y={PAD.t - 7} textAnchor="end" className="lc-unit">
+          {isMoney(target) ? '円' : target.unit}
+        </text>
+        {result.days.map((d, i) =>
+          !many || (i + 1) % 5 === 0 || i === 0 ? (
+            <text key={d.day} x={px(i + 0.5)} y={H - 5} textAnchor="middle" className="lc-tick">
+              {many ? Number(d.day.slice(8)) : WEEKDAYS[i]}
+            </text>
+          ) : null,
+        )}
+        <line x1={px(0)} x2={px(s.n)} y1={py(0)} y2={py(result.goal)} className="lc-pace" />
+        <line x1={PAD.l} x2={W - PAD.r} y1={py(result.goal)} y2={py(result.goal)} className="lc-goal" />
+        <text x={W - PAD.r} y={py(result.goal) - 5} textAnchor="end" className="lc-label">
           目標 {amount(target, result.goal)}
         </text>
-        <path d={pace} className="lc-pace" />
-        {line && <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-        {pts.map((p, i) => (
-          <circle key={i} cx={p[0]} cy={p[1]} r={n > 7 ? 1.8 : 3} fill={color} />
+        {s.nowX != null && (
+          <g>
+            <line x1={px(s.nowX)} x2={px(s.nowX)} y1={PAD.t} y2={py(0)} className="lc-now" />
+            <text x={px(s.nowX)} y={PAD.t - 6} textAnchor="middle" className="lc-tick">
+              いま
+            </text>
+          </g>
+        )}
+        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {s.points.slice(1).map((p, i) => (
+          <circle key={i} cx={px(p.x)} cy={py(p.y)} r={many ? 2 : 3} fill={color} />
         ))}
-        {last && todayIndex >= 0 && <circle cx={last[0]} cy={last[1]} r="5" fill="#fff" stroke={color} strokeWidth="2.5" />}
-        <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} className="lc-axis" />
+        {s.nowX != null && <circle cx={px(last.x)} cy={py(last.y)} r="5" fill="#fff" stroke={color} strokeWidth="2.5" />}
       </svg>
       <figcaption className="caption">
-        青い線：積み上げ · 点線：期間の目標 · 薄い斜線：期間の終わりにちょうど目標になるペース
-        {ahead != null &&
-          (target.kind === 'cap'
-            ? ` · いまの目安より ${amount(target, Math.abs(ahead))} ${ahead >= 0 ? '少ない' : '多い'}`
-            : ` · いまの目安より ${amount(target, Math.abs(ahead))} ${ahead > 0 ? '遅れ' : '先行'}`)}
+        <span className="lc-key">
+          <i className="k-line" style={{ background: color }} />
+          積み上げ {amount(target, last.y)}
+        </span>
+        <span className="lc-key">
+          <i className="k-pace" />
+          目安（終わりにちょうど目標）
+        </span>
+        <span className={`lc-diff ${(reach ? s.diff > 0 : s.diff < 0) ? 'tone-over' : 'tone-accent'}`}>
+          {s.nowX != null ? 'いま' : '期間の終わり'}の目安より {amount(target, Math.abs(s.diff))}{' '}
+          {reach ? (s.diff > 0 ? '遅れ' : '先行') : s.diff >= 0 ? '少ない' : '多い'}
+        </span>
       </figcaption>
     </figure>
   );
