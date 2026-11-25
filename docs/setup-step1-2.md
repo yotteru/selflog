@@ -65,7 +65,7 @@ where n.nspname in ('zanryo', 'zanryo_private') and c.relkind = 'r';
    select zanryo.bootstrap();          -- 既定の5ターゲット
    select zanryo.issue_widget_token(); -- ← 表示された zr_... をメモ（二度と表示されない）
    ```
-   今はアプリでできる：ターゲットはログインすると自動で作られ、トークンは「⚙ 設定 → ウィジェット」で発行・再発行できる。
+   今はアプリでできる：ターゲットはログインすると自動で作られ、トークンは下のタブの「設定 → ウィジェット」で発行・再発行できる。
 4. 試しに記録を入れる（同じくまとめて実行）：
    ```sql
    select set_config('request.jwt.claim.sub', '<USER_ID>', true);
