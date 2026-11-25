@@ -51,7 +51,7 @@ SQL Editor で `supabase/sql/05_periods.sql` を実行する（1回だけ。**�
 
 ### やること（1回だけ）
 
-1. Supabase の **SQL Editor** を開き、`supabase/sql/06_holidays.sql` の中身を全部貼り付けて **Run**（**まだ**）。
+1. Supabase の **SQL Editor** を開き、`supabase/sql/06_holidays.sql` の中身を全部貼り付けて **Run**（**済み**）。
    - 「Success」と出ればOK。もう一度流すと「すでに実行済みです」と出て止まる（何も変わらない）。
    - 流す前でもアプリは今までどおり動く（休日の表示が出ないだけ）。
 2. アプリの **設定 → ターゲット → 使えるお金** を開き、「休日の目標」に金額を入れて保存。

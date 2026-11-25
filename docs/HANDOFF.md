@@ -12,7 +12,7 @@ v1.1（平日と休日の目標）まで実装して main に反映済み。利�
 - アプリは、新しい SQL を流す前の DB でも動くようにする（無い列・関数はエラーにせず機能を隠す） — 理由: 反映（push）と SQL の実行の順番がずれるため。
 - Gemini は無料枠だけ（課金を有効にしない）。写真は `gemini-flash-lite-latest`、名前で調べる（検索つき）は `gemini-2.5-flash` — 理由: 無料の検索は Gemini 2.x だけ。
 - 画面の原則（利用者の希望）：ゲージは満タンから減る、ホーム・記録一覧・期間はページがスクロールしない、下のタブは固定、よく押すものは画面の下、ホームは見るだけ、左右スワイプで日付・期間を移動、週は月曜はじまり、週・月の目標は記録の有無にかかわらず日数分（必ず記録する前提）。
-- 利用者は「反映任せる」と言っている：作業ブランチ `claude/new-session-nx7j7c` と `main` の両方に push してよい（main への push で GitHub Pages に自動で置かれ、iPhone のアプリも自動で入れ替わる）。PR は作らない。
+- 利用者は「反映任せる」と言っている：その会話の作業ブランチと `main` の両方に push してよい（2026-11-25 に改めて「今後もプッシュしていい」と確認済み）（main への push で GitHub Pages に自動で置かれ、iPhone のアプリも自動で入れ替わる）。PR は作らない。
 - 説明は日本語で、とても分かりやすく短く（利用者の希望）。
 
 ## 未決事項
@@ -31,7 +31,7 @@ v1.1（平日と休日の目標）まで実装して main に反映済み。利�
 
 ## 資産
 - アプリ：`src/`（画面 `screens/`、部品 `components/`、ロジックとテスト `lib/`）。公開先 `https://yotteru.github.io/selflog/`。
-- DB：`supabase/sql/00〜06, 10, 99`（一覧は `supabase/sql/README.md`。利用者は 05 まで流済み、06 はこれから）。テスト `supabase/tests/`（PGlite）。
+- DB：`supabase/sql/00〜06, 10, 99`（一覧は `supabase/sql/README.md`。利用者は 06 まで流済み）。テスト `supabase/tests/`（PGlite）。
 - Edge Function：`supabase/functions/zanryo-estimate-nutrition/index.ts`、`zanryo-widget-summary/index.ts`（利用者がダッシュボードに貼って置く。変えたら貼り直しを頼む）。
 - 文書：`README.md`、`CLAUDE.md`、`docs/`（仕様・各段階の手順・受け入れ基準・メールの非公開・この引き継ぎ）。
 
