@@ -27,22 +27,6 @@ describe('折れ線の点の位置（日ごと）', () => {
     expect(s.points[1].y).toBeLessThan(s.paceAt(1));
     expect(s.points[2].y).toBeLessThan(s.paceAt(2));
   });
-  it('初日は、週の目標を7日で分けた量が今日の目安', () => {
-    const first = buildPeriod([row('2026-11-23', 500)], 'k', 'week', '2026-11-23', '2026-11-29', '2026-11-23');
-    expect(lineSeries(first, '2026-11-23').today).toEqual({ goal: 2000, used: 500 });
-  });
-  it('今日の目安：週の残り（14000 − 昨日まで 3850）を今日から日曜までの5日で分ける。今日ここまでは 1000', () => {
-    const s = lineSeries(result, '2026-11-25');
-    expect(s.today).toEqual({ goal: (14000 - 3850) / 5, used: 1000 });
-  });
-  it('上限型で週の目標をもう超えていたら、今日の目安は 0', () => {
-    const over = buildPeriod([row('2026-11-23', 15000), row('2026-11-24', 100)], 'k', 'week', '2026-11-23', '2026-11-29', '2026-11-24');
-    expect(lineSeries(over, '2026-11-24').today).toEqual({ goal: 0, used: 100 });
-  });
-  it('過ぎた期間には今日の目安は無い', () => {
-    const past = buildPeriod([row('2026-11-16', 2500)], 'k', 'week', '2026-11-16', '2026-11-22', '2026-11-25');
-    expect(lineSeries(past, '2026-11-25').today).toBeNull();
-  });
   it('期間の終わりで目安はちょうど目標', () => {
     expect(lineSeries(result, '2026-11-25').paceAt(7)).toBe(14000);
   });
@@ -51,7 +35,6 @@ describe('折れ線の点の位置（日ごと）', () => {
     const s = lineSeries(past, '2026-11-25');
     expect(s.todayX).toBeNull();
     expect(s.points.at(-1)).toEqual({ x: 7, y: 2500 });
-    expect(s.diff).toBe(14000 - 2500);
   });
 });
 
@@ -75,8 +58,6 @@ describe('平日と休日で目標が違うとき', () => {
     expect(s.paceAt(1)).toBe(3000);
     expect(s.paceAt(1.5)).toBe(3500);
     expect(s.paceAt(7)).toBe(13000);
-    // 今日（水・平日）の目安：残り 13000 − 1800 = 11200 を、水〜日の目標（1000×3 + 3000×2 = 9000）の割合で → 11200 × 1000 / 9000
-    expect(s.today!.goal).toBeCloseTo((11200 * 1000) / 9000);
   });
   it('月曜（祝日）の 900 円は、休日の目標 3000 円と比べて目標内', () => {
     expect(r.days[0].status).toBe('ok');

@@ -521,8 +521,6 @@ body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
 .lc-key i { display: inline-block; width: 14px; height: 0; }
 .lc-key .k-line { height: 3px; border-radius: 2px; }
 .lc-key .k-pace { border-top: 2px dotted #b9b9b2; }
-.lc-diff { font-weight: 700; width: 100%; }
-.lc-sub { width: 100%; font-size: 11px; color: var(--sub, #5f5f5a); margin-top: -2px; }
 
 /* v1.1：平日／休日（ホームの日付の横。タップで切り替え） */
 .day-type {

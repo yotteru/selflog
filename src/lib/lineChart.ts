@@ -21,15 +21,6 @@ export interface LineSeries {
   todayX: number | null;
   /** 位置 x での目安 */
   paceAt: (x: number) => number;
-  /** 最後の点（今日があれば今日の分まで）の、その日の終わりの目安との差。+ なら目安より少ない */
-  diff: number;
-  /**
-   * 今日の目安（今日が期間の中にあるときだけ）。
-   * goal：期間の目標の残り（目標 − 昨日までの合計）を、今日から終わりまでの日に、日ごとの目標の割合で分けた今日の分。
-   *       上限型で残りがもう無ければ 0。
-   * used：今日ここまでの量。
-   */
-  today: { goal: number; used: number } | null;
 }
 
 export function lineSeries(result: PeriodResult, today: string): LineSeries {
@@ -48,19 +39,7 @@ export function lineSeries(result: PeriodResult, today: string): LineSeries {
     if (d.day === today) todayX = i + 1;
     points.push({ x: i + 1, y });
   });
-  const last = points[points.length - 1];
-  let todayGoal: LineSeries['today'] = null;
-  if (todayX != null) {
-    const t = todayX - 1; // 今日の位置（0 はじまり）
-    const before = t > 0 ? (result.cumulative[t - 1] ?? 0) : 0;
-    const used = (result.cumulative[t] ?? before) - before;
-    const left = result.goal - before; // 期間の目標の残り
-    const restGoals = paceEnd(n) - paceEnd(t); // 今日から終わりまでの日ごとの目標の合計
-    const share = paceEnd(t + 1) - paceEnd(t); // 今日の目標
-    const goal = restGoals > 0 ? (left * share) / restGoals : left;
-    todayGoal = { goal: Math.max(0, goal), used };
-  }
-  return { points, n, todayX, paceAt, diff: paceAt(last.x) - last.y, today: todayGoal };
+  return { points, n, todayX, paceAt };
 }
 
 /** 縦軸のきりのよい目盛り（0 を含めて4〜6本） */
