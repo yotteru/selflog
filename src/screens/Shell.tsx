@@ -211,7 +211,7 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
 
   async function confirmEmpty(confirmed: boolean) {
     const msg = confirmed
-      ? `${formatDayLabel(day)}は、何も食べず、お金も使わなかった日として確定しますか？\n今月の節約には、この日の目標額がそのまま入ります。`
+      ? `${formatDayLabel(day)}は、何も食べず、お金も使わなかった日として確定しますか？`
       : `${formatDayLabel(day)}の「記録なしで確定」を取り消しますか？`;
     if (!window.confirm(msg)) return;
     setBusy(true);
@@ -283,7 +283,6 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
         {tab === 'home' && (
           <HomeScreen
             {...common}
-            monthSaving={current?.monthSaving ?? null}
             banner={isToday ? missingBannerText(missing) : null}
             onBanner={() => missing[0] && goTo(missing[0])}
             canConfirmEmpty={!isToday && noEntries && !current?.confirmedEmpty}

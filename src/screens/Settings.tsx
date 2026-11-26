@@ -169,12 +169,10 @@ function TargetSheet({ target, nextSort, onSaved, onClose }: { target: Target | 
         </p>
         {keyed && <p className="hint">「{KEYED[target!.key!]}」は写真の読み取りや節約の計算で使うので、単位は変えられません。</p>}
         <p className="hint">目標や期間を変えると今日から反映されます。過去の日の目標は変わりません。</p>
-        <div className="sheet-actions">
-          {error && <div className="error" role="alert">{error}</div>}
-          <button className="primary" disabled={busy}>
-            保存する
-          </button>
-        </div>
+        {error && <div className="error" role="alert">{error}</div>}
+        <button className="primary" disabled={busy}>
+          保存する
+        </button>
       </form>
     </Sheet>
   );

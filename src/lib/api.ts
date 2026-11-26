@@ -8,8 +8,6 @@ export interface DayData {
   summary: SummaryItem[];
   entries: Entry[];
   presets: Preset[];
-  /** 今月の節約（見込み）。どの日を見ていても、今日までの今月の値 */
-  monthSaving: number | null;
   /** 「この日は記録なしで確定」済みか */
   confirmedEmpty: boolean;
   /** 記録漏れの日（直近7日、今日を除く。§3.5） */
@@ -50,7 +48,7 @@ export async function bootstrap(): Promise<void> {
 }
 
 export async function fetchDay(day: string): Promise<DayData> {
-  const [summary, entries, presets, saving, status, missing, info] = await Promise.all([
+  const [summary, entries, presets, status, missing, info] = await Promise.all([
     supabase.rpc('daily_summary', { p_day: day }),
     supabase
       .from('entries')
@@ -59,7 +57,6 @@ export async function fetchDay(day: string): Promise<DayData> {
       .is('deleted_at', null)
       .order('recorded_at', { ascending: false }),
     supabase.rpc('presets_ranked'),
-    supabase.rpc('month_saving', { p_today: null }),
     supabase.from('day_status').select('confirmed_empty').eq('day_key', day).maybeSingle(),
     supabase.rpc('missing_days'),
     supabase.rpc('day_info', { p_day: day }),
@@ -69,7 +66,6 @@ export async function fetchDay(day: string): Promise<DayData> {
   const infoRow = info.error ? null : ((info.data as InfoRow[] | null)?.[0] ?? null);
 
   type Row = Omit<Entry, 'values'> & { entry_values: { target_id: string; amount: number }[] };
-  const savingValue = check(saving);
   return {
     day,
     summary: (check(summary) as SummaryItem[]).map((s) => ({
@@ -85,7 +81,6 @@ export async function fetchDay(day: string): Promise<DayData> {
       values: Object.fromEntries(entry_values.map((v) => [v.target_id, num(v.amount)])),
     })),
     presets: (check(presets) as Preset[]).map((p) => ({ ...p, use_count: num(p.use_count) })),
-    monthSaving: savingValue == null ? null : num(savingValue),
     confirmedEmpty: Boolean((check(status) as { confirmed_empty: boolean } | null)?.confirmed_empty),
     missingDays: (check(missing) as string[]).map(String).sort(),
     dayInfo: infoRow && {

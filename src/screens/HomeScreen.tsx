@@ -2,7 +2,6 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addDays, formatDayLabel } from '../lib/dayKey';
 import { pacePrefsVersion, paceFor, showPace, subscribePace } from '../lib/pace';
 import { dayBounds, dayTitle } from '../lib/days';
-import { fmt } from '../lib/display';
 import type { SummaryItem } from '../lib/types';
 import type { DayInfo } from '../lib/api';
 import { useSwipe } from '../lib/useSwipe';
@@ -37,7 +36,6 @@ export function HomeScreen({
   loadError,
   unsent,
   onGo,
-  monthSaving,
   banner,
   onBanner,
   canConfirmEmpty,
@@ -57,7 +55,6 @@ export function HomeScreen({
   loadError: string;
   unsent: number;
   onGo: (d: string) => void;
-  monthSaving: number | null;
   banner: string | null;
   onBanner: () => void;
   canConfirmEmpty: boolean;
@@ -81,7 +78,6 @@ export function HomeScreen({
   const pace = (i: SummaryItem) => (showPace(i) ? paceFor(i, day, now) : null);
   const ringItem = items.find((i) => i.key === 'kcal') ?? items[0];
   const meters = items.filter((i) => i !== ringItem);
-  const saving = monthSaving == null ? undefined : `今月の節約（見込み）${monthSaving < 0 ? '−' : ''}¥${fmt(monthSaving)}`;
 
   return (
     <div className="home swipe-area" ref={swipe.ref} {...swipe.handlers}>
@@ -129,7 +125,7 @@ export function HomeScreen({
           {meters.length > 0 && (
             <section className="card meters" aria-label="ターゲット">
               {meters.map((m) => (
-                <MeterRow key={m.target_id} item={m} pace={stale ? null : pace(m)} extra={m.key === 'money' ? saving : undefined} />
+                <MeterRow key={m.target_id} item={m} pace={stale ? null : pace(m)} />
               ))}
             </section>
           )}

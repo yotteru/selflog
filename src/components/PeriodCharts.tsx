@@ -93,7 +93,7 @@ function tickLabel(v: number): string {
  * 積み上げの折れ線：期間の始まり（0）からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
  * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は日ごとに1つ、その日の終わりの位置に置くので、
  * 点が斜線より上なら目安より多い・下なら少ない。今日の点は途中なので白抜き。上限型は目標を超えたらオレンジ。
- * 文言の主な比較は「昨日まで」（今日の途中は食事などでいったん目安を超えやすいため、下に小さく添える）。
+ * 文言は、今日の目安（期間の残りを残りの日で分けた量）と今日ここまでの量だけ。
  */
 export function LineChart({ result, target, today }: { result: PeriodResult; target: PeriodTarget; today: string }) {
   const s = lineSeries(result, today);
@@ -108,15 +108,32 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
   const color = overGoal ? COLORS.over : COLORS.accent;
   const many = s.n > 7;
   const reach = target.kind === 'reach';
-  // 比べ方：主は「昨日まで（終わった日）」。今日の途中は食事などでいったん目安を超えやすいので、下に小さく添える
-  const tone = (v: number) => ((reach ? v > 0 : v < 0) ? 'tone-over' : 'tone-accent');
-  const word = (v: number) => (reach ? (v > 0 ? '遅れ' : '先行') : v >= 0 ? '少ない' : '多い');
-  const inProgress = s.todayX != null;
-  const main =
-    inProgress && s.diffDone != null
-      ? { label: '昨日まで', v: s.diffDone }
-      : { label: inProgress ? '今日の終わり' : '期間の終わり', v: s.diff };
-  const sub = inProgress && s.diffDone != null ? { v: s.diff } : null;
+  // 文言：今週（今月）の途中なら「今日の目安（期間の残りを残りの日で分けた量）」と「今日ここまで」だけ。
+  // 過ぎた期間は、期間の目標と比べた結果だけ
+  const unit = (v: number) => amount(target, v);
+  const span = s.n > 7 ? '今月' : '今週';
+  let main: { text: string; over: boolean } | null = null;
+  let sub: string | null = null;
+  if (s.today) {
+    const { goal, used } = s.today;
+    if (goal <= 0) {
+      main = reach ? { text: `${span}の目標は達成 ✓`, over: false } : { text: `${span}の目標をもう超えています`, over: true };
+      sub = `今日ここまで ${unit(used)}`;
+    } else {
+      if (used <= goal) main = reach && used === goal ? { text: '今日の目安は達成 ✓', over: false } : { text: `今日あと ${unit(goal - used)}`, over: false };
+      else main = reach ? { text: '今日の目安は達成 ✓', over: false } : { text: `今日の目安を ${unit(used - goal)} 超えています`, over: true };
+      sub = `今日の目安 ${unit(goal)}（${span}の残り÷残りの日） · 今日ここまで ${unit(used)}`;
+    }
+  } else if (s.points.length > 1) {
+    const left = result.goal - last.y;
+    main = reach
+      ? left > 0
+        ? { text: `目標まで ${unit(left)} 足りなかった`, over: true }
+        : { text: '目標を達成 ✓', over: false }
+      : left >= 0
+        ? { text: `目標より ${unit(left)} 少ない`, over: false }
+        : { text: `目標より ${unit(-left)} 多い`, over: true };
+  }
 
   return (
     <figure className="line-chart">
@@ -167,16 +184,8 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
           <i className="k-pace" />
           目安（終わりにちょうど目標）
         </span>
-        {main && (
-          <span className={`lc-diff ${tone(main.v)}`}>
-            {main.label}の目安より {amount(target, Math.abs(main.v))} {word(main.v)}
-          </span>
-        )}
-        {sub && (
-          <span className="lc-sub">
-            今日の分を入れると、今日の終わりの目安より {amount(target, Math.abs(sub.v))} {word(sub.v)}
-          </span>
-        )}
+        {main && <span className={`lc-diff ${main.over ? 'tone-over' : 'tone-accent'}`}>{main.text}</span>}
+        {sub && <span className="lc-sub">{sub}</span>}
       </figcaption>
     </figure>
   );
