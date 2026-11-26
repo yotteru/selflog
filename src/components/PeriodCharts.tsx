@@ -1,6 +1,6 @@
 // 期間の画面のグラフ：棒・折れ線・カレンダー
 import { diffDays } from '../lib/dayKey';
-import { lineSeries, niceTicks } from '../lib/lineChart';
+import { lineSeries, niceTicks, paceDiffText } from '../lib/lineChart';
 import { COLORS, fmt, isMoney } from '../lib/display';
 import type { DayStatus, PeriodResult, PeriodTarget } from '../lib/period';
 
@@ -93,7 +93,7 @@ function tickLabel(v: number): string {
  * 積み上げの折れ線：期間の始まり（0）からの合計（青い線）が、期間の目標（横の点線）に対してどこまで来たか。
  * 薄い斜線は「期間の終わりにちょうど目標になるペース」。点は日ごとに1つ、その日の終わりの位置に置くので、
  * 点が斜線より上なら目安より多い・下なら少ない。今日の点は途中なので白抜き。上限型は目標を超えたらオレンジ。
- * 下には凡例だけ（比べた結果の文は出さない。数字は上のカードで見る）。
+ * 下に凡例と、目安線との差の一言（上限型は余裕／使いすぎ、到達型は先行／遅れ）。
  */
 export function LineChart({ result, target, today }: { result: PeriodResult; target: PeriodTarget; today: string }) {
   const s = lineSeries(result, today);
@@ -107,6 +107,7 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
   const overGoal = target.kind === 'cap' && last.y > result.goal;
   const color = overGoal ? COLORS.over : COLORS.accent;
   const many = s.n > 7;
+  const diff = paceDiffText(s, result, target);
 
   return (
     <figure className="line-chart">
@@ -157,6 +158,7 @@ export function LineChart({ result, target, today }: { result: PeriodResult; tar
           <i className="k-pace" />
           目安（終わりにちょうど目標）
         </span>
+        {diff && <span className={`lc-diff ${diff.tone === 'behind' ? 'tone-over' : 'tone-accent'}`}>{diff.text}</span>}
       </figcaption>
     </figure>
   );

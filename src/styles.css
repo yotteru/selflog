@@ -518,6 +518,7 @@ body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
 .lc-vgrid { stroke: #f1f1ec; stroke-width: 1; }
 .line-chart figcaption { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .lc-key { display: inline-flex; align-items: center; gap: 4px; }
+.lc-diff { font-weight: 700; width: 100%; }
 .lc-key i { display: inline-block; width: 14px; height: 0; }
 .lc-key .k-line { height: 3px; border-radius: 2px; }
 .lc-key .k-pace { border-top: 2px dotted #b9b9b2; }

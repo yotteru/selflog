@@ -5,7 +5,9 @@
 // - 目安の線：期間の始まり 0 から、期間の終わり n で目標にちょうど届く線。日ごとの目標の積み上げ（result.pace）を結ぶ。
 //   どの日も目標が同じなら直線（goal × x / n）。休日の目標が大きければ、休日のところで傾きが大きくなる
 // こうすると、点が線より上なら目安より多い・下なら少ない、が見た目と一致する。
+import { fmt, withUnit } from './display';
 import type { PeriodResult } from './period';
+import type { Kind } from './types';
 
 export interface LinePoint {
   x: number;
@@ -40,6 +42,28 @@ export function lineSeries(result: PeriodResult, today: string): LineSeries {
     points.push({ x: i + 1, y });
   });
   return { points, n, todayX, paceAt };
+}
+
+/**
+ * 目安線との差の一言。最後の点（今日があれば今日の分まで）と、その位置の目安線を比べる。
+ * 上限型は「余裕／使いすぎ」、到達型は「先行／遅れ」（ホームのペースの言い方とそろえる）。
+ * 期間の目標そのものを超えた（届いた）ら、それを優先する。過ぎた期間は最後の日の終わり＝目標と比べる。
+ */
+export function paceDiffText(
+  s: LineSeries,
+  result: PeriodResult,
+  target: { kind: Kind; key: string | null; unit: string },
+): { text: string; tone: 'ahead' | 'behind' | 'even' } | null {
+  if (s.points.length < 2) return null;
+  const last = s.points[s.points.length - 1];
+  const ref = s.todayX == null && last.x === s.n ? '目標' : '目安線';
+  if (target.kind === 'cap' && last.y > result.goal) return { text: `目標を ${withUnit(target, last.y - result.goal)} 超えています`, tone: 'behind' };
+  if (target.kind === 'reach' && last.y >= result.goal) return { text: '目標を達成 ✓', tone: 'ahead' };
+  const diff = s.paceAt(last.x) - last.y; // + なら目安線より少ない
+  if (fmt(Math.abs(diff)) === '0') return { text: `${ref}どおり`, tone: 'even' };
+  const a = withUnit(target, Math.abs(diff));
+  if (target.kind === 'reach') return diff > 0 ? { text: `${ref}より ${a} 遅れ`, tone: 'behind' } : { text: `${ref}より ${a} 先行`, tone: 'ahead' };
+  return diff > 0 ? { text: `${ref}より ${a} 余裕`, tone: 'ahead' } : { text: `${ref}より ${a} 使いすぎ`, tone: 'behind' };
 }
 
 /** 縦軸のきりのよい目盛り（0 を含めて4〜6本） */
