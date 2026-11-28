@@ -22,7 +22,7 @@ import { queue } from '../lib/queueInstance';
 import { move, renumber } from '../lib/reorder';
 import type { Period, SummaryItem } from '../lib/types';
 import { EntryForm, type FieldTarget } from '../components/EntryForm';
-import { PasswordSheet } from '../components/PasswordSheet';
+import { supabase } from '../lib/supabase';
 import { Sheet } from '../components/Sheet';
 
 const KEYED: Record<string, string> = { kcal: 'カロリー', p: 'タンパク質', f: '脂質', c: '炭水化物', money: '使えるお金' };
@@ -463,9 +463,56 @@ function UsageSection() {
   );
 }
 
-function AccountSection({ onSignOut }: { onSignOut: () => void }) {
-  const [pw, setPw] = useState(false);
+/** パスワードを変える（今のパスワードは聞かない）。シートを使わず、設定画面の中で入れる */
+function PasswordSection() {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
 
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setDone(false);
+    if (pw.length < 12) return setError('12文字以上にしてください');
+    if (pw !== pw2) return setError('2つのパスワードが同じではありません');
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) return setError(error.message);
+    setPw('');
+    setPw2('');
+    setDone(true);
+  }
+
+  return (
+    <section className="card settings-section" aria-labelledby="sec-password">
+      <h2 id="sec-password">パスワードを変える</h2>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label className="field">
+          新しいパスワード（12文字以上）
+          <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+        </label>
+        <label className="field">
+          もう一度
+          <input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+        </label>
+        {error && <div className="error" role="alert">{error}</div>}
+        {done && (
+          <p className="hint strong" role="status">
+            変えました。次からは、メールアドレスとこのパスワードでログインしてください。
+          </p>
+        )}
+        <button className="secondary" disabled={busy || !pw || !pw2}>
+          {busy ? '変えています…' : 'パスワードを変える'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function AccountSection({ onSignOut }: { onSignOut: () => void }) {
   function signOut() {
     const n = queue.unsentCount;
     const msg = n > 0 ? `未送信の記録が${n}件あります。ログアウトすると、この記録は消えます。ログアウトしますか？` : 'ログアウトしますか？';
@@ -479,13 +526,9 @@ function AccountSection({ onSignOut }: { onSignOut: () => void }) {
   return (
     <section className="card settings-section" aria-labelledby="sec-account">
       <h2 id="sec-account">アカウント</h2>
-      <button type="button" className="secondary" onClick={() => setPw(true)}>
-        パスワードを決める・変える
-      </button>
       <button type="button" className="link-btn danger" onClick={signOut}>
         ログアウト
       </button>
-      {pw && <PasswordSheet onClose={() => setPw(false)} />}
     </section>
   );
 }
@@ -493,6 +536,8 @@ function AccountSection({ onSignOut }: { onSignOut: () => void }) {
 /** 設定（§5.4） */
 export function Settings({ onSignOut }: { onSignOut: () => void }) {
   const [changed, setChanged] = useState(false);
+  // 版（commit の先頭7文字）と、作った日時（日本時間）。アプリが新しくなったかを確かめるため、画面の一番下に出す
+  const versionText = `版 ${__APP_VERSION__}（${new Date(__APP_BUILT_AT__).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 作成）`;
   return (
     <div className="settings-screen">
       <header className="day-header">
@@ -503,10 +548,9 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
       <PresetsSection />
       <WidgetSection />
       <UsageSection />
+      <PasswordSection />
       <AccountSection onSignOut={onSignOut} />
-      <p className="hint center">
-        版 {__APP_VERSION__}（{new Date(__APP_BUILT_AT__).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}）
-      </p>
+      <p className="settings-version">{versionText}</p>
     </div>
   );
 }
