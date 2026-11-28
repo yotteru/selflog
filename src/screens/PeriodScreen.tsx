@@ -135,7 +135,17 @@ export function PeriodScreen({ today, onOpenDay }: { today: string; onOpenDay: (
                 {amount(target, result.total)} <small>/ {amount(target, result.goal)}</small>
               </strong>
             </div>
-            <strong className={`period-pct ${over ? 'tone-over' : 'tone-accent'}`}>{done ? '達成 ✓' : g.pct}</strong>
+            <strong className={`period-pct ${over ? 'tone-over' : 'tone-accent'}`}>
+              {done ? (
+                '達成 ✓'
+              ) : (
+                <>
+                  <span className="period-left-word">{over ? '超過' : target.kind === 'reach' ? 'あと' : '残り'}</span>
+                  {amount(target, Math.abs(result.goal - result.total))}
+                  <small>（{g.pct}）</small>
+                </>
+              )}
+            </strong>
           </div>
           <div className="meter-track" role="img" aria-label={done ? '達成' : g.pct}>
             <div className="meter-fill" style={{ width: `${g.fill * GOAL_AT * 100}%`, background: COLORS.accent }} />

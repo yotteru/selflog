@@ -329,10 +329,12 @@ button { cursor: pointer; }
 }
 .chip[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
 .period-card { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-.period-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.period-head { display: flex; flex-direction: column; gap: 2px; }
 .period-total { display: block; font-size: 22px; }
 .period-total small { font-size: 12px; font-weight: 500; color: var(--sub); }
-.period-pct { font-size: 22px; white-space: nowrap; }
+.period-pct { font-size: 20px; white-space: nowrap; }
+.period-pct .period-left-word { font-size: 12px; font-weight: 600; margin-right: 4px; }
+.period-pct small { font-size: 12px; font-weight: 600; margin-left: 2px; }
 .bars {
   position: relative; height: 128px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;
   align-items: end; border-bottom: 1px solid var(--line);
