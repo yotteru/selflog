@@ -47,7 +47,7 @@ describe('extractJson / isMode', () => {
   });
 });
 
-import { extractJsonLoose, extractSources, lookupPrompt, normalizeQuery, validateLookup } from '../functions/zanryo-estimate-nutrition/index';
+import { capConfidence, extractJsonLoose, extractSources, jstToday, lookupPrompt, normalizeQuery, validateLookup } from '../functions/zanryo-estimate-nutrition/index';
 
 describe('名前で調べる', () => {
   it('調べる言葉：改行や制御文字を消し、60文字まで。空はだめ', () => {
@@ -58,13 +58,30 @@ describe('名前で調べる', () => {
   });
   it('指示文に言葉が入り、検索つきは根拠の文と JSON を書くよう指示する', () => {
     expect(lookupPrompt('吉野家 牛丼', true)).toContain('「吉野家 牛丼」');
-    expect(lookupPrompt('x', true)).toContain('どのページに何と書いてあったか');
+    expect(lookupPrompt('x', true)).toContain('どのページ（いつの情報か）に何と書いてあったか');
     expect(lookupPrompt('x', true)).toContain('JSON を書く');
     expect(lookupPrompt('x', false)).not.toContain('JSON を書く');
   });
+  it('古い情報を避ける：今日の日付を伝え、検索の言葉に年を入れ、新しいページを使うよう頼む', () => {
+    const t = lookupPrompt('吉野家 牛丼', true, '2026年11月28日');
+    expect(t).toContain('今日は2026年11月28日');
+    expect(t).toContain('「2026」');
+    expect(t).toContain('いちばん新しいもの');
+    expect(t).toContain('"as_of"');
+    expect(lookupPrompt('x', false, '2026年11月28日')).toContain('知識が古い可能性');
+  });
+  it('日本時間の今日（UTC の夜は翌日）', () => {
+    expect(jstToday(new Date('2026-11-27T15:30:00Z'))).toBe('2026年11月28日');
+    expect(jstToday(new Date('2026-11-27T14:30:00Z'))).toBe('2026年11月27日');
+  });
+  it('検索せずに出した値は high にしない', () => {
+    const d = validateLookup({ name: 'x', serving: '', kcal: 100, p: 1, f: 1, c: 1, price: null, confidence: 'high', as_of: '2024年5月' })!;
+    expect(d.as_of).toBe('2024年5月');
+    expect(capConfidence(d).confidence).toBe('mid');
+  });
   it('検証：範囲内なら通す。値段は整数、無ければ null', () => {
     expect(validateLookup({ name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high' })).toEqual({
-      name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high',
+      name: '牛丼', serving: '並盛 1杯', kcal: 635, p: 19.5, f: 20.4, c: 92.8, price: 498, confidence: 'high', as_of: '',
     });
     expect(validateLookup({ name: 'x', serving: '', kcal: 100, p: 1, f: 1, c: 1, price: null })).toMatchObject({ price: null, confidence: 'low' });
     expect(validateLookup({ name: 'x', serving: '', kcal: 100, p: 1, f: 1, c: 1, price: 'わからない' })).toMatchObject({ price: null });

@@ -19,6 +19,9 @@
 //   ZANRYO_GEMINI_DAILY_LIMIT  … 省略時 100（無料枠の1日の上限 500 より十分少なく）
 //   ZANRYO_ALLOWED_ORIGINS     … 省略時 https://yotteru.github.io,http://localhost:5173
 //   ZANRYO_GEMINI_SEARCH       … 省略時 on。off にすると「名前で調べる」で Google 検索を使わない
+// 古い情報を避けるため、毎回「今日の日付」を伝え、検索の言葉に年を入れ、ページの日付が新しいものを使うよう頼む。
+// 値がいつ時点の情報か（as_of）も返す。検索せずに出した値は confidence を high にしない。
+//
 //   ZANRYO_GEMINI_LOOKUP_MODEL … 「名前で調べる」の検索つきの呼び出しに使うモデル。省略時 gemini-2.5-flash
 //                                （gemini-2.5-flash-lite は新しいプロジェクトでは使えない：no longer available to new users）
 //                                （無料枠の検索は Gemini 2 / 2.5 だけ 1日1,500回。Gemini 3 以降は0回。2026-11-23 に AI Studio で確認）
@@ -176,6 +179,8 @@ export interface LookupDraft {
   c: number;
   price: number | null;
   confidence: 'low' | 'mid' | 'high';
+  /** 値がいつ時点の情報か（例: 2026年10月）。分からなければ空 */
+  as_of: string;
 }
 export interface Source {
   title: string;
@@ -200,23 +205,38 @@ export const LOOKUP_SCHEMA = {
     c: NUM,
     price: { type: 'INTEGER', nullable: true },
     confidence: { type: 'STRING', enum: ['low', 'mid', 'high'] },
+    as_of: STR,
   },
   required: ['name', 'serving', 'kcal', 'p', 'f', 'c', 'confidence'],
 };
 
-export function lookupPrompt(query: string, withSearch: boolean): string {
+/** 日本時間の今日（例: 2026年11月28日）。Gemini は自分の知識の時点を「今」と思いこみやすいので、毎回伝える */
+export function jstToday(now: Date = new Date()): string {
+  const d = new Date(now.getTime() + 9 * 3600_000);
+  return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`;
+}
+
+export function lookupPrompt(query: string, withSearch: boolean, today: string = jstToday()): string {
+  const year = today.slice(0, 4);
   return (
+    `今日は${today}（日本時間）です。\n` +
     `次の食べ物・飲み物の、1人前の栄養成分を${withSearch ? '調べて' : '答えて'}ください：「${query}」\n` +
-    (withSearch ? '・知っている値でも、必ず Google 検索で公式の情報を確かめてから答える。\n' : '') +
+    (withSearch
+      ? '・知っている値でも、必ず Google 検索で今の情報を確かめてから答える。あなたの知識は古いことがある（リニューアル・量の変更・価格改定・終売）。\n' +
+        `・検索の言葉には「栄養成分」「${year}」や「最新」を入れ、公式サイトの今の栄養成分表・メニューのページを探す。\n` +
+        '・ページの日付（更新日・発売日・価格改定日）を見て、いちばん新しいものを使う。古い記事・まとめサイト・個人のブログより、公式の今のページを優先する。食い違うときは新しい方。\n' +
+        '・今は売っていない（終売・期間限定が終わった）なら、そのことを最初の文に書き、confidence を low にする。\n'
+      : '・検索なしで答えるので、あなたの知識が古い可能性がある。確かでないものは confidence を mid か low にする。\n') +
     '・チェーン店や市販品なら、その会社の公式の栄養成分表の値を優先する。サイズの指定が無ければ標準（並・Mなど）にする。\n' +
     '・name は記録に使う短い名前。店名やブランドがあれば先頭に付け、サイズがあれば最後に付ける（例: 吉野家 牛丼 並盛、セブンイレブン ツナマヨおにぎり）。' +
     '質問の言葉や「カロリー」「教えて」などの余計な言葉は入れない。20文字くらいまで。\n' +
     '・serving は量（例: 1杯, 1個）、kcal、p（たんぱく質g）、f（脂質g）、c（炭水化物g。無ければ糖質＋食物繊維）。\n' +
-    '・price は日本での税込価格（円・整数）。分からなければ null。\n' +
+    '・price は日本での今の税込価格（円・整数）。分からなければ null。\n' +
+    '・as_of は値がいつ時点の情報か（例: 2026年10月）。ページの日付から書く。分からなければ空文字。\n' +
     '・確かな値なら confidence=high、推定なら mid か low。食べ物として特定できなければ name を空、数値は0、confidence=low。\n' +
     (withSearch
-      ? '・はじめに、どのページに何と書いてあったかを1〜2文で書く（例: 吉野家の公式サイトの栄養成分表では、牛丼並盛は635kcal。）。' +
-        'そのあとに次の形の JSON を書く（``` は書かない。JSON の後には何も書かない）：{"name":"","serving":"","kcal":0,"p":0,"f":0,"c":0,"price":null,"confidence":"low"}'
+      ? '・はじめに、どのページ（いつの情報か）に何と書いてあったかを1〜2文で書く（例: 吉野家の公式サイトの栄養成分表（2026年10月更新）では、牛丼並盛は635kcal。）。' +
+        'そのあとに次の形の JSON を書く（``` は書かない。JSON の後には何も書かない）：{"name":"","serving":"","kcal":0,"p":0,"f":0,"c":0,"price":null,"confidence":"low","as_of":""}'
       : '')
   );
 }
@@ -231,7 +251,12 @@ export function validateLookup(raw: unknown): LookupDraft | null {
   if (kcal == null || p == null || f == null || c == null) return null;
   const price = o.price == null || o.price === '' ? null : num(o.price, 0, 100_000);
   const confidence = o.confidence === 'high' || o.confidence === 'mid' ? o.confidence : 'low';
-  return { name: str(o.name, 40), serving: str(o.serving, 20), kcal, p, f, c, price: price == null ? null : Math.round(price), confidence };
+  return { name: str(o.name, 40), serving: str(o.serving, 20), kcal, p, f, c, price: price == null ? null : Math.round(price), confidence, as_of: str(o.as_of, 20) };
+}
+
+/** 検索せずに（Gemini の知識だけで）出した値は、古いことがあるので「確か」とは言わない */
+export function capConfidence(d: LookupDraft): LookupDraft {
+  return d.confidence === 'high' ? { ...d, confidence: 'mid' } : d;
 }
 
 /** 検索つきの返事は JSON 指定ができないので、文章の中から JSON を取り出す */
@@ -421,9 +446,11 @@ async function handle(req: Request): Promise<Response> {
           lookupModel,
         );
         if (r.status === 200) {
-          const draft = validateLookup(extractJsonLoose(r.body));
-          if (draft) {
+          const found = validateLookup(extractJsonLoose(r.body));
+          if (found) {
             const queries = searchQueries(r.body);
+            // 検索つきで呼んでも、実際には検索せずに答えることがある。そのときは知識だけの値として扱う
+            const draft = queries.length > 0 ? found : capConfidence(found);
             return json(200, { ok: true, mode, draft, sources: extractSources(r.body), searched: true, searchQueries: queries.length, queries, model: lookupModel });
           }
           return fail(200, 'failed', 'unreadable');
@@ -442,7 +469,8 @@ async function handle(req: Request): Promise<Response> {
         const detail = `${searchFailure ? `${searchFailure} / ` : ''}nosearch:${r.status}:${errorHint(r.body)}`;
         return r.status === 429 ? fail(200, 'rate_limited', detail) : fail(200, 'failed', detail);
       }
-      const draft = validateLookup(extractJson(r.body));
+      const found = validateLookup(extractJson(r.body));
+      const draft = found && capConfidence(found);
       // 検索が使えなかった理由も返す（画面の「詳細」に出す。上限の名前やエラー文の先頭だけ）
       return draft ? json(200, { ok: true, mode, draft, sources: [], searched: false, searchError: searchFailure }) : fail(200, 'failed', 'unreadable');
     }

@@ -167,7 +167,7 @@ export function estimate(mode: EstimateMode, image: string): Promise<EstimateRes
 export type LookupResult =
   | {
       ok: true;
-      draft: { name: string; serving: string; kcal: number; p: number; f: number; c: number; price: number | null; confidence: 'low' | 'mid' | 'high' };
+      draft: { name: string; serving: string; kcal: number; p: number; f: number; c: number; price: number | null; confidence: 'low' | 'mid' | 'high'; as_of?: string };
       sources: { title: string; uri: string }[];
       /** Google 検索を使えたか（false なら Gemini の知識だけ） */
       searched: boolean;

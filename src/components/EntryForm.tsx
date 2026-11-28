@@ -181,6 +181,7 @@ export function EntryForm({
                 </button>
               </span>
             )}
+            {found.draft.as_of && <span className="hint">情報の時点：{found.draft.as_of}</span>}
             {found.draft.confidence !== 'high' && <span className="hint strong">確かな値ではありません。確かめてから記録してください。</span>}
             {found.searched ? (
               found.sources.length > 0 ? (
