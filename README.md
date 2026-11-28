@@ -39,7 +39,7 @@ iPhone のホーム画面に追加して使う PWA（`https://yotteru.github.io/
 | `supabase/tests/` | SQLのテスト（PGlite上で `supabase/sql/` を流して確かめる） |
 | `src/screens/` | 画面（Shell＝タブと日ごとのデータ、Home、Entries、Period、Settings、Capture、Login） |
 | `src/components/` | 部品（ゲージ、期間のグラフ、記録のシート、切り抜きの枠など） |
-| `src/lib/` | 画面から切り離したロジック（1日の区切り `dayKey.ts`、期間の集計 `period.ts`、折れ線 `lineChart.ts`、ペースの目安 `pace.ts`、送信キュー `queue.ts`、写真の切り抜き `image.ts`、API `api.ts` など。多くにテストあり） |
+| `src/lib/` | 画面から切り離したロジック（1日の区切り `dayKey.ts`、期間の集計 `period.ts`、折れ線 `lineChart.ts`、今日の目安 `pace.ts`、送信キュー `queue.ts`、写真の切り抜き `image.ts`、API `api.ts` など。多くにテストあり） |
 | `widget/zanryo.js` | Scriptable用ウィジェットスクリプト（見た目の作り直しは保留中） |
 | `.github/workflows/pages.yml` | main（と作業ブランチ）に push すると GitHub Pages に置き直す |
 

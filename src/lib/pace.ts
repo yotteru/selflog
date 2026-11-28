@@ -1,105 +1,69 @@
-// 時間に対するペースの目安（v1.2）
-// 「いまの時刻なら、残りはこのくらいが目安」を、1日（朝4:00〜翌朝4:00）・週・月のうち過ぎた割合から出す。
-// まっすぐ減る前提の目安。お金やスクリーンタイムのように1日の最後にまとめて入れるものには向かないので、
-// ターゲットごとに出す・出さないを選べる（既定はカロリー・P・F・C だけ出す）。設定はこの端末にだけ保存する。
-import { addDays, dayKeyOf } from './dayKey';
+// 今日の目安（▼）
+// 「今週（今月）の目標を守るには、今日はどれくらいにすればいいか」を、日ごとに決める（時刻では動かさない）。
+//   今日の目安 =（期間の目標 − 昨日までの量）を、今日から期間の終わりまでの日に、日ごとの目標の割合で分けた今日の分
+// - 期間：目標の期間が「1日」「1週間」のターゲットは今週（月〜日）、「1か月」は今月
+// - 記録していない日（未記録）は、その日の目標どおりとみなす（記録し忘れで今日の目安がふくらまないように）
+// - 休日の目標が大きい日は、その分多く分ける
+// - すべてのターゲットに出す
+import { monthRange, weekRange } from './days';
 import { withUnit } from './display';
-import type { Period, SummaryItem } from './types';
-
-const DAY = 86_400_000;
-const SHIFT = 5 * 3_600_000; // JST(+9) − 区切り(4)
-
-/** 今日のうち過ぎた割合（0〜1）。朝4:00 が 0 */
-export function dayElapsed(now: number): number {
-  return (((now + SHIFT) % DAY) + DAY) % DAY / DAY;
-}
-
-/** その期間のうち過ぎた割合（0〜1）。期間がもう終わっていれば 1、まだ始まっていなければ 0 */
-export function periodElapsed(now: number, period: Period, start: string, end: string): number {
-  const today = dayKeyOf(now);
-  if (today > end) return 1;
-  if (today < start) return 0;
-  const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY) + 1;
-  const done = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY);
-  void period;
-  return Math.min(1, (done + dayElapsed(now)) / days);
-}
+import { buildPeriod } from './period';
+import type { RangeRow, SummaryItem } from './types';
 
 export type PaceTone = 'ahead' | 'behind' | 'even' | 'over' | 'done';
 
 export interface Pace {
-  /** 目安の位置：目標のうち、いま残っていてよい割合（0〜1） */
+  /** ▼の位置：棒の満タン（目標）のうち、今日の終わりに残っていてよい割合（0〜1） */
   marker: number;
   text: string;
   tone: PaceTone;
+  /** 今日の目安の量 */
+  guide: number;
 }
 
-/** 目安と比べた一言。上限型は「余裕／使いすぎ」、到達型は「先行／遅れ」。差が目標の5%以内は「目安どおり」 */
-export function paceOf(item: Pick<SummaryItem, 'kind' | 'goal' | 'used' | 'key' | 'unit'>, elapsed: number): Pace {
-  const marker = Math.max(0, 1 - elapsed);
-  if (item.kind === 'cap' && item.used > item.goal) return { marker, text: '超過しています', tone: 'over' };
-  if (item.kind === 'reach' && item.used >= item.goal) return { marker, text: '達成', tone: 'done' };
-  const diff = item.goal * elapsed - item.used; // + なら目安より使って（摂って）いない
-  if (Math.abs(diff) <= item.goal * 0.05) return { marker, text: '目安どおり', tone: 'even' };
+/** ターゲットの目安を出す期間（その日を含む週か月） */
+export function guideRange(item: Pick<SummaryItem, 'period'>, day: string): { view: 'week' | 'month'; from: string; to: string } {
+  return item.period === 'month' ? { view: 'month', ...monthRange(day) } : { view: 'week', ...weekRange(day) };
+}
+
+/** 今日の目安の量と、昨日までの量（未記録の日はその日の目標とみなす） */
+export function dayGuide(rows: RangeRow[], item: Pick<SummaryItem, 'target_id' | 'period'>, day: string): { guide: number; before: number } | null {
+  const { view, from, to } = guideRange(item, day);
+  if (!rows.some((r) => r.target_id === item.target_id)) return null;
+  const r = buildPeriod(rows, item.target_id, view, from, to, day);
+  const t = r.days.findIndex((d) => d.day === day);
+  if (t < 0) return null;
+  const before = r.days.slice(0, t).reduce((a, d) => a + (d.status === 'missing' ? d.dailyGoal : d.used), 0);
+  const rest = r.days.slice(t).reduce((a, d) => a + d.dailyGoal, 0);
+  const left = r.goal - before;
+  const guide = rest > 0 ? (left * r.days[t].dailyGoal) / rest : left;
+  return { guide: Math.max(0, guide), before };
+}
+
+/**
+ * ▼の位置と一言。上限型は「目安より X 余裕／使いすぎ」、到達型は「目安まで あと X／目安を達成」（目安＝今日の目安）。
+ * 棒は、1日の目標なら1日の目標、週・月の目標ならその期間の目標が満タン。
+ */
+export function paceOf(
+  item: Pick<SummaryItem, 'kind' | 'goal' | 'used' | 'key' | 'unit' | 'period' | 'day_used'>,
+  g: { guide: number; before: number },
+): Pace {
+  const daily = (item.period ?? 'day') === 'day';
+  const today = daily ? item.used : (item.day_used ?? 0);
+  // 今日の終わりに、目安どおりなら使っている（摂っている）量。棒の満タンに対する残りの割合が▼の位置
+  const endUsed = (daily ? 0 : g.before) + g.guide;
+  const marker = item.goal > 0 ? Math.min(1, Math.max(0, 1 - endUsed / item.goal)) : 0;
+  const diff = g.guide - today; // + なら今日の目安より少ない
   const amount = withUnit(item, Math.abs(diff));
-  if (item.kind === 'reach') return diff > 0 ? { marker, text: `目安より ${amount} 遅れ`, tone: 'behind' } : { marker, text: `目安より ${amount} 先行`, tone: 'ahead' };
-  return diff > 0 ? { marker, text: `目安より ${amount} 余裕`, tone: 'ahead' } : { marker, text: `目安より ${amount} 使いすぎ`, tone: 'behind' };
+  const base = { marker, guide: g.guide };
+  if (Math.abs(diff) < 0.5) return { ...base, text: item.kind === 'reach' ? '目安を達成' : '目安どおり', tone: item.kind === 'reach' ? 'done' : 'even' };
+  if (item.kind === 'reach') return diff > 0 ? { ...base, text: `目安まで あと ${amount}`, tone: 'behind' } : { ...base, text: '目安を達成', tone: 'done' };
+  return diff > 0 ? { ...base, text: `目安より ${amount} 余裕`, tone: 'ahead' } : { ...base, text: `目安より ${amount} 使いすぎ`, tone: 'over' };
 }
 
-/** 画面に出すペース。今日（その期間の中）を見ているときだけ。過去の日は出さない */
-export function paceFor(item: SummaryItem, viewing: string, now: number): Pace | null {
-  const today = dayKeyOf(now);
-  if (viewing !== today) return null;
-  const period = item.period ?? 'day';
-  const elapsed =
-    period === 'day' ? dayElapsed(now) : periodElapsed(now, period, item.period_start ?? today, item.period_end ?? addDays(today, 0));
-  return paceOf(item, elapsed);
-}
-
-// ---------------------------------------------------------------------------
-// ターゲットごとの「ペースの目安を出す」（この端末に保存）
-// ---------------------------------------------------------------------------
-
-const KEY = 'zanryo.pace.v1';
-const listeners = new Set<() => void>();
-let cache: Record<string, boolean> | null = null;
-
-function read(): Record<string, boolean> {
-  if (cache) return cache;
-  try {
-    cache = JSON.parse(localStorage.getItem(KEY) || '{}') as Record<string, boolean>;
-  } catch {
-    cache = {};
-  }
-  return cache;
-}
-
-/** 既定：カロリー・P・F・C は出す。お金・自分で追加したものは出さない（まとめて入力することが多いため） */
-export function defaultShowPace(key: string | null): boolean {
-  return key === 'kcal' || key === 'p' || key === 'f' || key === 'c';
-}
-
-export function showPace(target: { target_id: string; key: string | null }): boolean {
-  const v = read()[target.target_id];
-  return v ?? defaultShowPace(target.key);
-}
-
-export function setShowPace(targetId: string, show: boolean) {
-  const next = { ...read(), [targetId]: show };
-  cache = next;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    /* 保存できなくても、この画面のあいだは効く */
-  }
-  listeners.forEach((fn) => fn());
-}
-
-export function subscribePace(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-export function pacePrefsVersion(): Record<string, boolean> {
-  return read();
+/** 画面に出す目安。今日を見ているときだけ（過去の日は出さない）。期間のデータが無ければ出さない */
+export function paceFor(item: SummaryItem, rows: RangeRow[] | null | undefined, viewing: string, today: string): Pace | null {
+  if (viewing !== today || !rows) return null;
+  const g = dayGuide(rows, item, today);
+  return g ? paceOf(item, g) : null;
 }

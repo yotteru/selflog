@@ -1,4 +1,5 @@
 // Supabase（zanryo スキーマ）とのやりとり
+import { monthRange, weekRange } from './days';
 import { supabase } from './supabase';
 import type { Op, SendResult } from './queue';
 import type { Amounts, Entry, Period, Preset, RangeRow, SummaryItem } from './types';
@@ -8,6 +9,8 @@ export interface DayData {
   summary: SummaryItem[];
   entries: Entry[];
   presets: Preset[];
+  /** 今日の目安（▼）のための、その日を含む週と月の range_summary の行（読めなければ null） */
+  guideRows?: RangeRow[] | null;
   /** 「この日は記録なしで確定」済みか */
   confirmedEmpty: boolean;
   /** 記録漏れの日（直近7日、今日を除く。§3.5） */
@@ -48,7 +51,10 @@ export async function bootstrap(): Promise<void> {
 }
 
 export async function fetchDay(day: string): Promise<DayData> {
-  const [summary, entries, presets, status, missing, info] = await Promise.all([
+  // 今日の目安（▼）のための、その日を含む週と月の日ごとの量と目標
+  const week = weekRange(day);
+  const month = monthRange(day);
+  const [summary, entries, presets, status, missing, info, guide] = await Promise.all([
     supabase.rpc('daily_summary', { p_day: day }),
     supabase
       .from('entries')
@@ -60,6 +66,7 @@ export async function fetchDay(day: string): Promise<DayData> {
     supabase.from('day_status').select('confirmed_empty').eq('day_key', day).maybeSingle(),
     supabase.rpc('missing_days'),
     supabase.rpc('day_info', { p_day: day }),
+    supabase.rpc('range_summary', { p_from: week.from < month.from ? week.from : month.from, p_to: week.to > month.to ? week.to : month.to }),
   ]);
   // day_info は 06_holidays.sql を流す前は無い。そのときは休日の表示を出さないだけにする
   type InfoRow = { off: boolean; auto_off: boolean; manual: boolean; holiday_name: string | null; has_holiday_goals: boolean };
@@ -83,6 +90,8 @@ export async function fetchDay(day: string): Promise<DayData> {
     presets: (check(presets) as Preset[]).map((p) => ({ ...p, use_count: num(p.use_count) })),
     confirmedEmpty: Boolean((check(status) as { confirmed_empty: boolean } | null)?.confirmed_empty),
     missingDays: (check(missing) as string[]).map(String).sort(),
+    // 05_periods.sql を流す前は無い。そのときは目安を出さないだけにする
+    guideRows: guide.error ? null : toRangeRows((guide.data as RangeRow[] | null) ?? []),
     dayInfo: infoRow && {
       off: Boolean(infoRow.off),
       autoOff: Boolean(infoRow.auto_off),
@@ -96,7 +105,10 @@ export async function fetchDay(day: string): Promise<DayData> {
 
 /** 週・月の画面用：from〜to（62日まで）の日ごと・ターゲットごとの量と目標 */
 export async function fetchRange(from: string, to: string): Promise<RangeRow[]> {
-  const rows = check(await supabase.rpc('range_summary', { p_from: from, p_to: to })) as RangeRow[];
+  return toRangeRows(check(await supabase.rpc('range_summary', { p_from: from, p_to: to })) as RangeRow[]);
+}
+
+function toRangeRows(rows: RangeRow[]): RangeRow[] {
   return rows.map((r) => ({ ...r, day_key: String(r.day_key), goal: num(r.goal), daily_goal: num(r.daily_goal), used: num(r.used), off: Boolean(r.off) }));
 }
 

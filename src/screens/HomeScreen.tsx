@@ -1,26 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addDays, formatDayLabel } from '../lib/dayKey';
-import { pacePrefsVersion, paceFor, showPace, subscribePace } from '../lib/pace';
+import { paceFor } from '../lib/pace';
 import { dayBounds, dayTitle } from '../lib/days';
-import type { SummaryItem } from '../lib/types';
+import type { RangeRow, SummaryItem } from '../lib/types';
 import type { DayInfo } from '../lib/api';
 import { useSwipe } from '../lib/useSwipe';
 import { DayNav, DayTitle } from '../components/DayHeader';
 import { MeterRow, RingCard } from '../components/Gauges';
-
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    const onVisible = () => document.visibilityState === 'visible' && setNow(Date.now());
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, []);
-  return now;
-}
 
 /**
  * ホーム（v1・スクロールしない）：情報を見ることに徹する画面。記録は下の「＋」から。
@@ -44,6 +29,7 @@ export function HomeScreen({
   onConfirmEmpty,
   dayInfo,
   onToggleOff,
+  guideRows,
 }: {
   day: string;
   today: string;
@@ -64,6 +50,8 @@ export function HomeScreen({
   /** その日が休日か（休日の目標を入れたターゲットがあるときだけ表示する） */
   dayInfo?: DayInfo | null;
   onToggleOff?: () => void;
+  /** 今日の目安のための、今週・今月の日ごとの量と目標 */
+  guideRows?: RangeRow[] | null;
 }) {
   const { min } = dayBounds(today);
   const swipe = useSwipe({
@@ -72,10 +60,8 @@ export function HomeScreen({
     canPrev: day > min,
     canNext: !isToday,
   });
-  // ペースの目安：1分ごとに時刻を進め、ターゲットごとの「出す・出さない」の変更にもついていく
-  const now = useNow();
-  useSyncExternalStore(subscribePace, pacePrefsVersion);
-  const pace = (i: SummaryItem) => (showPace(i) ? paceFor(i, day, now) : null);
+  // 今日の目安（▼）：今週（今月）の残りを、今日から終わりまでの日に分けた今日の分。日ごとに決まる
+  const pace = (i: SummaryItem) => paceFor(i, guideRows, day, today);
   const ringItem = items.find((i) => i.key === 'kcal') ?? items[0];
   const meters = items.filter((i) => i !== ringItem);
 

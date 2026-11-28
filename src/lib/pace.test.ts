@@ -1,70 +1,74 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { dayGuide, guideRange, paceFor, paceOf } from './pace';
+import type { RangeRow, SummaryItem } from './types';
 
-const store = new Map<string, string>();
-vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) });
-
-import { dayElapsed, paceFor, paceOf, periodElapsed, setShowPace, showPace } from './pace';
-import type { SummaryItem } from './types';
-
-const jst = (s: string) => Date.parse(`${s}+09:00`);
+// 11/23（月）〜11/29（日）
+const WEEK = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'];
+const kcalRow = (day: string, used: number, confirmed = true): RangeRow => ({
+  day_key: day, target_id: 'k', key: 'kcal', name: 'カロリー', unit: 'kcal', kind: 'cap', sort: 1,
+  period: 'day', goal: 2200, daily_goal: 2200, used, confirmed,
+});
 const kcal = (o: Partial<SummaryItem> = {}): SummaryItem => ({
-  target_id: 'k', key: 'kcal', name: 'カロリー', unit: 'kcal', kind: 'cap', sort: 0, goal: 2200, used: 860, remaining: 1340, state: 'ok', ...o,
+  target_id: 'k', key: 'kcal', name: 'カロリー', unit: 'kcal', kind: 'cap', sort: 0, goal: 2200, used: 1150, remaining: 1050, state: 'ok', period: 'day', ...o,
 });
 
-beforeEach(() => store.clear());
-
-describe('過ぎた割合', () => {
-  it('1日は朝4:00が0、翌朝4:00の直前が1に近い', () => {
-    expect(dayElapsed(jst('2026-11-23T04:00:00'))).toBe(0);
-    expect(dayElapsed(jst('2026-11-23T16:00:00'))).toBeCloseTo(0.5);
-    expect(dayElapsed(jst('2026-11-23T19:00:00'))).toBeCloseTo(15 / 24);
-    expect(dayElapsed(jst('2026-11-24T03:00:00'))).toBeCloseTo(23 / 24);
+describe('今日の目安（今週の残り ÷ 残りの日）', () => {
+  it('月〜金に計 9,000 なら、土の目安は (15,400 − 9,000) ÷ 2 = 3,200', () => {
+    const used = [2000, 1800, 1700, 1900, 1600];
+    const rows = WEEK.map((d, i) => kcalRow(d, used[i] ?? 0, i < 5));
+    expect(dayGuide(rows, kcal(), '2026-11-28')).toEqual({ guide: 3200, before: 9000 });
   });
-  it('週：月曜の朝4:00が0。水曜の正午（朝4:00から8時間）なら (2 + 8/24) / 7', () => {
-    expect(periodElapsed(jst('2026-11-25T12:00:00'), 'week', '2026-11-23', '2026-11-29')).toBeCloseTo((2 + 8 / 24) / 7);
+  it('月曜は、週の目標を7日で分けた量（1日の目標）', () => {
+    const rows = WEEK.map((d) => kcalRow(d, 0, false));
+    expect(dayGuide(rows, kcal(), '2026-11-23')?.guide).toBeCloseTo(2200);
   });
-  it('月：30日の月の16日の朝4:00なら 15/30。終わった期間は1', () => {
-    expect(periodElapsed(jst('2026-11-16T04:00:00'), 'month', '2026-11-01', '2026-11-30')).toBeCloseTo(15 / 30);
-    expect(periodElapsed(jst('2026-12-02T10:00:00'), 'month', '2026-11-01', '2026-11-30')).toBe(1);
+  it('記録していない日は、その日の目標どおりとみなす（目安がふくらまない）', () => {
+    // 月 2,000、火は未記録 → 昨日まで 2,000 + 2,200 = 4,200。水の目安は (15,400 − 4,200) ÷ 5 = 2,240
+    const rows = [kcalRow('2026-11-23', 2000), kcalRow('2026-11-24', 0, false), ...WEEK.slice(2).map((d) => kcalRow(d, 0, false))];
+    expect(dayGuide(rows, kcal(), '2026-11-25')).toEqual({ guide: 2240, before: 4200 });
   });
-});
-
-describe('目安と比べた一言', () => {
-  it('上限型：目安より使っていなければ余裕、使っていれば使いすぎ', () => {
-    // 19:00 → 15/24 過ぎた。目安の使用量 2200×0.625=1375、使ったのは 860 → 515 余裕
-    expect(paceOf(kcal(), 15 / 24)).toMatchObject({ text: '目安より 515kcal 余裕', tone: 'ahead' });
-    expect(paceOf(kcal({ used: 1800 }), 15 / 24)).toMatchObject({ text: '目安より 425kcal 使いすぎ', tone: 'behind' });
-    expect(paceOf(kcal(), 15 / 24).marker).toBeCloseTo(9 / 24);
+  it('上限型でもう週の目標を超えていたら、目安は 0', () => {
+    const rows = [kcalRow('2026-11-23', 16000), ...WEEK.slice(1).map((d) => kcalRow(d, 0, false))];
+    expect(dayGuide(rows, kcal(), '2026-11-24')?.guide).toBe(0);
   });
-  it('差が目標の5%以内なら目安どおり', () => {
-    expect(paceOf(kcal({ used: 1300 }), 15 / 24)).toMatchObject({ text: '目安どおり', tone: 'even' });
+  it('休日の目標が大きい日は、その分多く分ける', () => {
+    // お金：平日 1,000・休日（土日）3,000。週 11,000。月〜金に計 4,000 → 残り 7,000 を土日（3,000 と 3,000）で分ける → 3,500
+    const money = (day: string, used: number, off: boolean, confirmed: boolean): RangeRow => ({
+      day_key: day, target_id: 'm', key: 'money', name: 'お金', unit: '円', kind: 'cap', sort: 2,
+      period: 'day', goal: off ? 3000 : 1000, daily_goal: off ? 3000 : 1000, used, confirmed, off,
+    });
+    const rows = WEEK.map((d, i) => money(d, i < 5 ? 800 : 0, i >= 5, i < 5));
+    expect(dayGuide(rows, { target_id: 'm', period: 'day' }, '2026-11-28')).toEqual({ guide: 3500, before: 4000 });
   });
-  it('到達型：遅れ／先行', () => {
-    const p = { key: 'p' as const, unit: 'g', kind: 'reach' as const, goal: 160 };
-    expect(paceOf({ ...p, used: 88 }, 15 / 24)).toMatchObject({ text: '目安より 12g 遅れ', tone: 'behind' });
-    expect(paceOf({ ...p, used: 140 }, 15 / 24)).toMatchObject({ text: '目安より 40g 先行', tone: 'ahead' });
-  });
-  it('超過・達成', () => {
-    expect(paceOf(kcal({ used: 2300 }), 0.5)).toMatchObject({ tone: 'over' });
-    expect(paceOf({ key: 'p', unit: 'g', kind: 'reach', goal: 160, used: 170 }, 0.5)).toMatchObject({ tone: 'done' });
-  });
-  it('過去の日を見ているときは出さない', () => {
-    const now = jst('2026-11-23T19:00:00');
-    expect(paceFor(kcal(), '2026-11-22', now)).toBeNull();
-    expect(paceFor(kcal(), '2026-11-23', now)).not.toBeNull();
+  it('目標の期間が1か月なら今月、それ以外は今週', () => {
+    expect(guideRange({ period: 'month' }, '2026-11-28')).toEqual({ view: 'month', from: '2026-11-01', to: '2026-11-30' });
+    expect(guideRange({ period: 'day' }, '2026-11-28')).toEqual({ view: 'week', from: '2026-11-23', to: '2026-11-29' });
   });
 });
 
-describe('ペースの目安を出すか（この端末に保存）', () => {
-  it('既定はカロリー・PFCだけ', () => {
-    expect(showPace({ target_id: 'k', key: 'kcal' })).toBe(true);
-    expect(showPace({ target_id: 'm', key: 'money' })).toBe(false);
-    expect(showPace({ target_id: 's', key: null })).toBe(false);
+describe('▼の位置と一言', () => {
+  it('上限型：今日の目安より少なければ余裕、多ければ使いすぎ', () => {
+    // 目安 3,200、今日 1,150 → 2,050 余裕。▼は満タン（2,200）に対して 1 − 3,200/2,200 → 0（左端）
+    expect(paceOf(kcal(), { guide: 3200, before: 9000 })).toMatchObject({ text: '目安より 2,050kcal 余裕', tone: 'ahead', marker: 0 });
+    // 目安 1,800、今日 1,150 → 650 余裕。▼は 1 − 1,800/2,200
+    expect(paceOf(kcal(), { guide: 1800, before: 0 }).marker).toBeCloseTo(1 - 1800 / 2200);
+    expect(paceOf(kcal({ used: 2000 }), { guide: 1800, before: 0 })).toMatchObject({ text: '目安より 200kcal 使いすぎ', tone: 'over' });
   });
-  it('切り替えると覚える', () => {
-    setShowPace('m', true);
-    setShowPace('k', false);
-    expect(showPace({ target_id: 'm', key: 'money' })).toBe(true);
-    expect(showPace({ target_id: 'k', key: 'kcal' })).toBe(false);
+  it('到達型：あと X／達成', () => {
+    const p = { key: 'p' as const, unit: 'g', kind: 'reach' as const, goal: 160, period: 'day' as const };
+    expect(paceOf({ ...p, used: 104 }, { guide: 160, before: 0 })).toMatchObject({ text: '目安まで あと 56g', tone: 'behind' });
+    expect(paceOf({ ...p, used: 170 }, { guide: 160, before: 0 })).toMatchObject({ text: '目安を達成', tone: 'done' });
+  });
+  it('週の目標のターゲット：棒は週の目標。▼は「昨日まで＋今日の目安」を使ったときの残り。比べるのは今日の分', () => {
+    const w = { key: 'money' as const, unit: '円', kind: 'cap' as const, goal: 7000, used: 3500, day_used: 500, period: 'week' as const };
+    const pace = paceOf(w, { guide: 1000, before: 3000 });
+    expect(pace.marker).toBeCloseTo(1 - 4000 / 7000);
+    expect(pace.text).toBe('目安より ¥500 余裕');
+  });
+  it('過去の日・期間のデータが無いときは出さない', () => {
+    const rows = WEEK.map((d) => kcalRow(d, 0, false));
+    expect(paceFor(kcal(), rows, '2026-11-27', '2026-11-28')).toBeNull();
+    expect(paceFor(kcal(), null, '2026-11-28', '2026-11-28')).toBeNull();
+    expect(paceFor(kcal(), rows, '2026-11-28', '2026-11-28')).not.toBeNull();
   });
 });

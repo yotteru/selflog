@@ -387,7 +387,8 @@ button { cursor: pointer; }
 .swipe-area { will-change: transform; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .meter-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--sub); font-variant-numeric: tabular-nums; }
 .meter-foot .pct { white-space: nowrap; }
-.meter-foot span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meter-foot span:first-child { min-width: 0; }
+.meter-foot { align-items: flex-start; }
 .preset-filter { height: 40px; border: 1px solid var(--tag); border-radius: 10px; padding: 0 12px; font-size: 16px; background: #fff; }
 
 /* 背の低い画面（iPhone SE など）：ホームを詰めて、棒がなるべくカードの中に収まるように */

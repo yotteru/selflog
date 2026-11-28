@@ -19,11 +19,14 @@ export function MeterBar({ item, view, pace }: { item: SummaryItem; view: View; 
 }
 
 /** 「目標 50g · 摂取 32g」「今週の目標 ¥7,000 · 使った ¥3,760 · 今日 ¥580」 */
-export function goalLine(item: SummaryItem): string {
+export function goalLine(item: SummaryItem, pace?: Pace | null): string {
   const period = item.period ?? 'day';
   const goalWord = period === 'day' ? '目標' : `${PERIOD_WORD[period].current}の目標`;
   const usedWord = isMoney(item) || !item.key ? '使った' : '摂取';
-  const parts = [`${goalWord} ${withUnit(item, item.goal)}`, `${usedWord} ${withUnit(item, item.used)}`];
+  const parts = [`${goalWord} ${withUnit(item, item.goal)}`];
+  // 今日の目安（今週・今月の残りを残りの日で分けた今日の分）
+  if (pace) parts.push(`目安 ${withUnit(item, pace.guide)}`);
+  parts.push(`${usedWord} ${withUnit(item, item.used)}`);
   if (period !== 'day') parts.push(`今日 ${withUnit(item, item.day_used ?? 0)}`);
   return parts.join(' · ');
 }
@@ -46,7 +49,7 @@ export function MeterRow({ item, extra, pace }: { item: SummaryItem; extra?: str
       </div>
       <MeterBar item={item} view="front" pace={pace} />
       <div className="meter-foot">
-        <span>{goalLine(item)}</span>
+        <span>{goalLine(item, pace)}</span>
         {pace ? <span className={`pace-text ${pace.tone}`}>▼ {pace.text}</span> : <span className="pct">{d.gauge.pct}</span>}
       </div>
       {extra && <span className="meter-sub">{extra}</span>}
@@ -107,7 +110,7 @@ export function RingCard({ item, pace }: { item: SummaryItem; pace?: Pace | null
           <strong className={d.over ? 'tone-over' : 'tone-accent'}>{bigPct}</strong>
           <span>{d.done ? '達成' : d.over ? '超えた' : '残っている'}</span>
         </div>
-        <span className="ring-meta">{goalLine(item)}</span>
+        <span className="ring-meta">{goalLine(item, pace)}</span>
         {pace ? (
           <span className={`status-pill pace ${pace.tone}`}>▼ {pace.text}</span>
         ) : (

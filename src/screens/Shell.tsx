@@ -290,6 +290,7 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
             busy={busy}
             onConfirmEmpty={confirmEmpty}
             dayInfo={current?.dayInfo}
+            guideRows={current?.guideRows}
             onToggleOff={toggleDayOff}
           />
         )}
